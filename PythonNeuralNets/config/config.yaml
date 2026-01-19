@@ -1,0 +1,21 @@
+hydra: 
+  run:
+    dir: runs/${MODEL_NAME}/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    #dir: runs/Climate1/2024-05-07/14-03-40
+defaults:
+  - constants: Climate6
+  - net: Climate6
+  - optimizer: Climate6
+  - run: Climate6
+  - variables: Climate6
+seed: 151082
+# can be NEW, LATEST, or a given checkpoint filename
+STARTING_POINT: LATEST
+CHECKPOINT_INTERVAL: 25 #default=10
+MAX_TO_KEEP_NUMBER: 20 #default=20
+MODEL_NAME: Climate6 
+#False-> Simulation; True -> draw 
+initialize_each_episode: True  #False is default, true in ClimateInClimateEconomics. An episode is a trajectory
+error_filename: error_file.txt
+enable_check_numerics: True #if True, checks basics, for example, division by zero.
+loss_choice: huber #huber or mse

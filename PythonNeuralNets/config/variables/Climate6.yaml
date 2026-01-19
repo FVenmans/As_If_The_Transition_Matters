@@ -1,0 +1,140 @@
+#Alternative: managed by file Variables.py
+states:
+  - name: kf
+    init:
+      distribution: truncated_normal #truncated at 2 stddev.
+      kwargs:
+        mean: 4.0 #will be multiplied by kf_scale
+        stddev: 0.40
+  - name: kc 
+    init:
+      distribution: truncated_normal 
+      kwargs:
+        mean: 0.135
+        stddev: 0.013
+  - name: kd 
+    init:
+      distribution: truncated_normal
+      kwargs:
+        mean: 0.70
+        stddev: 0.07
+  - name: ks 
+    init:
+      distribution: uniform
+      kwargs:
+        minval: 0 
+        maxval: 1 # will be multiplied by ks_scale (0.01) 
+  - name: T   # in °C
+    init:
+      distribution: truncated_normal
+      kwargs:
+        mean: 1.5
+        stddev: 0.15
+  - name: tau 
+    init:
+      distribution: uniform
+      kwargs:
+        minval: 0.00001
+        maxval: 0.15   #0.1=7 years, consider larger number for shorter episodes.
+  - name: y_kf
+  - name: y_kc
+  - name: y_kd
+  - name: y_S
+    
+#############################################                               
+policies:
+  - name: if_
+    activation: tf.keras.activations.linear  #consider activation: implied to enforce bounds automatically with sigmoid function but tends to be stuck at the boundaries
+    bounds: 
+      upper: 0.35
+      lower: 0.15
+  - name: ic  
+    activation: tf.keras.activations.linear
+    bounds: 
+      upper: 1 # multiplied by 0.1 after scaling 
+      lower: 0.1 # multiplied by 0.1 after scaling
+  - name: id  
+    activation: tf.keras.activations.linear
+    bounds: 
+      upper: 3 # multiplied by 0.01 after scaling
+      lower: -3 # multiplied by 0.01 after scaling  
+  - name: lambdaks
+    activation: tf.keras.activations.linear #should be negative. For a given dirty capital, increased ks gives lower opportunity for cheap stranding.
+    bounds: # lambdaks is -0.67 at start, -0.06 in year 4 and converges to zero thereafter
+      upper: -0.0000001 # multiplied by 1 after scaling 
+      penalty_upper: 1e-2
+      lower: -1.2   # multiplied by 1 after scaling 
+  - name: lambdaT  
+    activation: tf.keras.activations.linear
+    bounds: 
+      upper: -2
+      lower: -6 #steady state of model is 2.3 at temperature of 1.82°C, 2.9 at steady state temperature of 2.3°C
+#  - name: lambdatau  
+#    activation: tf.keras.activations.linear
+#    bounds: 
+#      upper: 1.5 #time should not matter in the long run because TC converges to zero and increasing carbon intensity does not matter at zero emissions
+#      lower: -1.5 #often negative because increasing emission intensity of dirty capital. TC (positive effect on lambdatau) has less effect.
+  - name: V  #value function divided by 100
+    activation: tf.keras.activations.linear
+    bounds:  #an upper bound without mentioning a lower bound does not work.    
+      upper: -1.6
+      lower: -2.25
+      
+#############################################            
+definitions:
+  #definitions to scale states and policies
+  - name: S #cumulative emisions in GtCO2 (state is in TtCO2)
+  - name: kf
+  - name: ks
+  - name: lambdaS
+  - name: lambdaks
+  - name: id
+  - name: ic
+  - name: v #value function (the state V is 100 times smaller)
+ 
+  #other definitions
+  - name: a_f 
+  - name: a_c
+  - name: a_d_pos
+  - name: a_d_neg
+  
+  - name: t
+#  - name: t_tau
+  - name: AL
+  - name: M
+  
+  - name: epsilon
+  - name: epsilon_M
+#  - name: epsilon_t
+
+  - name: Ebase
+  - name: E #energy 
+  - name: E_kc
+  - name: E_kd
+  - name: E_epsilon  
+
+  - name: ybase
+  - name: y #production
+  - name: y_E
+  - name: y_kf
+  - name: y_kc
+  - name: y_kd
+  - name: y_S
+  - name: y_epsilon
+
+  - name: ks_ratio
+  - name: P #pollution
+  - name: P_ks
+  - name: P_kd
+#  - name: P_tau
+
+  - name: c #consumption
+  - name: U_c
+#  - name: c_tau
+  
+  - name: lambdakf
+  - name: lambdakc
+  - name: lambdakd
+
+
+

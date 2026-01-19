@@ -1,0 +1,77 @@
+#Alternative: managed by file Variables.py
+states:
+  - name: kf
+    init:
+      distribution: truncated_normal #truncated at 2 stddev.
+      kwargs:
+        mean: 4.6 #will be multiplied by kf_scale
+        stddev: 0.3
+  - name: kc 
+    init:
+      distribution: truncated_normal 
+      kwargs:
+        mean: 0.11
+        stddev: 0.005
+  - name: kd 
+    init:
+      distribution: truncated_normal
+      kwargs:
+        mean: 0.58
+        stddev: 0.03
+
+#############################################                               
+policies:
+  - name: if_
+    activation: tf.keras.activations.linear  #consider activation: implied to enforce bounds automatically with sigmoid function but tends to be stuck at the boundaries
+    bounds: 
+      upper: 0.4
+      lower: 0.2
+  - name: ic  
+    activation: tf.keras.activations.linear
+    bounds: 
+      upper: 1.7 # multiplied by 0.01 after scaling 
+      lower: 0.5 # multiplied by 0.01 after scaling
+  - name: id  
+    activation: tf.keras.activations.linear
+    bounds: 
+      upper: 0.6 # multiplied by 0.1 after scaling
+      lower: 0.2 # multiplied by 0.1 after scaling  
+  - name: V  #value function divided by 100
+    activation: tf.keras.activations.linear
+    bounds:  #an upper bound without mentioning a lower bound does not work.    
+      upper: -1.6
+      lower: -2.25
+      
+#############################################            
+definitions:
+  #definitions to scale states and policies
+  - name: S #cumulative emisions in GtCO2 (state is in TtCO2)
+  - name: kf
+  - name: id
+  - name: ic
+  - name: v #value function (the state V is 100 times smaller)
+ 
+  #other definitions
+  - name: a_f 
+  - name: a_c
+  - name: a_d_pos
+  - name: epsilon
+  - name: Ebase
+  - name: E #energy 
+
+  - name: ybase
+  - name: y #production
+  - name: y_E
+  - name: y_kf
+  - name: y_kc
+  - name: y_kd
+
+  - name: c #consumption
+  - name: U_c
+  
+  - name: lambdakf
+  - name: lambdakc
+  - name: lambdakd
+
+
+

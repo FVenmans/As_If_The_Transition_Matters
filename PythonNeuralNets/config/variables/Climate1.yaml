@@ -1,0 +1,21 @@
+#Alternative: managed by file Variables.py
+states:
+  - name: S 
+    init:
+      distribution: truncated_normal
+      kwargs:
+        mean: 3
+        stddev: 0.5
+
+#############################################                               
+policies:
+  - name: Eshare  
+    activation: tf.keras.activations.linear
+    bounds: 
+      upper: 0.8
+      lower: -0.2
+
+#############################################            
+definitions:
+  - name: E  #emissions
+  - name: MD_MAC #marginal damages+MAC

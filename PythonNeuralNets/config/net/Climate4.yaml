@@ -1,0 +1,38 @@
+layers:  
+  - hidden:
+     units: 128  # less neurons converges more easily. #with 4 inputs and 128 neurons x2, we get 177 million linear subspaces. ((layers of 256 gives 16 times more)
+     type: dense
+     activation: gelu # elu self normalizes, but can be less stable. relu is most stable, but coarse for final solution. leaky relu could help with dying neurons.
+     init_scale: 0.01 # this is not needed with imitation of Glorot or He initializer
+     dropout_rate: 0.01 # 0.05 standard parameter. leaving out nodes in gradient calculation avoids super-influential nodes.
+     #batch_normalize:
+       #momentum: 0.999   #Normalizing the first layer is not ideal, if a bad initial policy function leads to high capital, all observations will be rescaled. This implies that the distribution of k0 changes between minibatches. Nevertheless, this rescaling of all inputs can be offset by all the individual weights        
+  - hidden:
+     units: 64
+     type: dense
+     activation: gelu 
+     init_scale: 0.01
+     dropout_rate: 0.01
+     #batch_normalize:  #for each input x is converted to a linear combination gamma*zhat+ beta, with zhat the z score of the minibatch input x. Unstable, because even though gemma and beta are slow AR1 processes, zscore will be different for each minibatch, especially when future states change in the next batch. Batch normalize is very intuitive for photo recognition. AdamW is probably a better way of keeping weights low. 
+       #momentum: 0.999  
+  - hidden:
+     units: 64
+     type: dense
+     activation: gelu 
+     init_scale: 0.01
+     #batch_normalize:
+       #momentum: 0.999 
+  - output:
+     type: dense
+     activation: linear
+     #init_scale: 0.05
+# --------------------------------------------------------------------------- #
+# Mimic the Glorot uniform initializer using the VarianceScaling initializer (tanh, sigmoid, softmax)
+# --------------------------------------------------------------------------- #
+net_initializer_mode: fan_avg
+net_initializer_distribution: uniform   
+# --------------------------------------------------------------------------- #
+# Use He initialization (good for ReLU, LeakyReLU, GELU, Swish) (add net_initializer_scale=2. ?)variance=2/fan_in
+# --------------------------------------------------------------------------- #
+#net_initializer_mode: fan_in
+#net_initializer_distribution: normal

@@ -1,0 +1,45 @@
+constants:
+#    rho: 0.011    #utility discount rate reduced by population growth
+    eta: 1.35      #elasticity of marginal utility wrt consumption
+#economic model
+    g: 0.02        #exogenous growth rate
+    g_L: 0.0042     #growth rate of population
+    g_tau: 0.015   #growth rate tau
+    g_psi: 0.01   
+    g_A1: 0.0037   #adjustment to trend tfp for disasters
+    g_varphi: 0.74 
+    g_A2: 0.01     #slow mean reversion after disasters
+    r: 0.0338       #rho-g_L+eta*g #growth adjusted discount rate (defined as r-g earlier on)
+    RRA: 4.        #Relative Risk Aversion
+    A: 3.44        #total factor productivity from DICE GDP0/L0/(kd0+kc0)^0.3 GDP 2020=84.5 Trillion$
+    L0: 7.795      #popuation in 2020 UN world population prospects (dice has 7.403)
+    alpha: 0.3     #elasticity of capital in Cobb-Douglas from DICE
+    psi0: 2        #GtCO2/trillion_brown_capital/year: 50GtCO2/20trillion =2.5tCO2/1000$ capital
+    delta: 0.04    #capital depreciation rate per year
+    chi: 0.1       #standard capital adjustment costs
+    theta1: 705    #stranding costs
+    theta2: 2.1    #stranding costs
+#Abatement costs (emissions in GtCO2)
+    varphi0: 0.00004 #MAC slope (40 if in TtCO2)    
+    phi0:  0.0024  #MAC intercept=E_BAU*varphi with E_BAU=60  (2.4 if in TtCO2)
+    M0: 100        #initial cumualtive abatement
+    epsilon: 0.1   #elasticity of endogenous learning
+    omega: 0.4     #weight on endogenous learning  
+#Climate and damages
+    zeta: 0.0006   #TCRE per (0.6 perTtCO2)
+    gamma: 5.544e-9 #0.000000005544  # zeta**2*gammaT  => gamma includes the TCRE    
+#uncertainty
+    Sigmak: 0.0001 #variance of kd, kc 
+    SigmaS: 0.0009 #variance of S
+    SigmaA: 0.0001 #variance of A
+    Sigmakd_kc: 0.0005 #correlation between kd and kc
+    lambdaA: 0.017 #disaster likelihood
+    xi1: 0.2       #effect temperature on disasters
+    xi2: 0.07      #effect temperature on disasters
+#initial states
+    E0: 56.0       #initial emissions
+    kd0: 3.592     #E0/psi0/L0
+    kc0: 35.92     #280/L0
+    S0: 2.0        #initial cumulative emissions (make sure this is float, not integer
+    A0: 1.         #initial tfp is A*A0
+    tau0: 0.       #initial time

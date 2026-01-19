@@ -1,0 +1,108 @@
+#Alternative: managed by file Variables.py
+states:
+  - name: kf
+    init:
+      distribution: truncated_normal #truncated at 2 stddev.
+      kwargs:
+        mean: 4.40 #will be multiplied by kf_scale
+        stddev: 0.4
+  - name: kc 
+    init:
+      distribution: truncated_normal 
+      kwargs:
+        mean: 0.14
+        stddev: 0.02
+  - name: kd 
+    init:
+      distribution: truncated_normal
+      kwargs:
+        mean: 0.6
+        stddev: 0.1
+  - name: ks 
+    init:
+      distribution: uniform
+      kwargs:
+        minval: 0 
+        maxval: 1 # will be multiplied by ks_scale (0.01) 
+  - name: T   # in °C
+    init:
+      distribution: truncated_normal
+      kwargs:
+        mean: 1.5
+        stddev: 0.15
+
+#############################################                               
+policies:
+  - name: if_
+    activation: tf.keras.activations.linear  #consider activation: implied to enforce bounds automatically with sigmoid function but tends to be stuck at the boundaries
+    bounds: 
+      upper: 0.4
+      lower: 0.2
+  - name: ic  
+    activation: tf.keras.activations.linear
+    bounds: 
+      upper: 0.9 # multiplied by 0.1 after scaling 
+      lower: 0.05 # multiplied by 0.1 after scaling
+  - name: id  
+    activation: tf.keras.activations.linear
+    bounds: 
+      upper: 0.6 # multiplied by 0.01 after scaling
+      lower: -2.3 # multiplied by 0.01 after scaling  
+  - name: lambdaks
+    activation: tf.keras.activations.linear #should be negative. For a given dirty capital, increased ks gives lower opportunity for cheap stranding.
+    bounds: # lambdaks is -0.67 at start, -0.06 in year 4 and converges to zero thereafter
+      upper: -0.0000001 # multiplied by 1 after scaling 
+      penalty_upper: 1e-2
+      lower: -1   # multiplied by 1 after scaling 
+  - name: lambdaT  
+    activation: tf.keras.activations.linear
+    bounds: 
+      upper: -1.8
+      lower: -5 #steady state of model is 2.3 at temperature of 1.82°C, 2.9 at steady state temperature of 2.3°C
+#  - name: lambdatau  
+#    activation: tf.keras.activations.linear
+#    bounds: #With old stranding function negative because emission intensity of dirty capital increase over time (proportional to exp(g_L+g)t) and because of stranding function. Increasing productivity of kc (TC) has less effect.
+  - name: V  #value function divided by 100
+    activation: tf.keras.activations.linear
+    bounds:  #an upper bound without mentioning a lower bound does not work.    
+      upper: -1.6
+      lower: -2.25
+      
+#############################################            
+definitions:
+  #definitions to scale states and policies
+  - name: S #cumulative emisions in GtCO2 (state is in TtCO2)
+  - name: kf
+  - name: ks
+  - name: lambdaS
+  - name: lambdaks
+  - name: id
+  - name: ic
+  - name: v #value function (the state V is 100 times smaller)
+ 
+  #other definitions
+  - name: a_f 
+  - name: a_c
+  - name: a_d_pos
+  - name: a_d_neg
+  - name: epsilon
+  - name: Ebase
+  - name: E #energy 
+  - name: ybase
+  - name: y #production
+  - name: y_E
+  - name: y_kf
+  - name: y_kc
+  - name: y_kd
+  - name: y_S
+  - name: P #pollution
+  - name: P_ks
+  - name: P_kd
+  - name: c #consumption
+  - name: U_c
+  - name: lambdakf
+  - name: lambdakc
+  - name: lambdakd
+
+
+

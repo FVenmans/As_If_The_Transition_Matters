@@ -1,0 +1,8 @@
+# see https://www.tensorflow.org/api_docs/python/tf/keras/optimizers
+optimizer: AdamW #AdamW is slightly better
+#learning_rate: 1e-4 #this is not used in the case of a learning rate schedule. 
+lr_schedule_boundaries: [1000, 2000, 20000, 50000, 100000, 120000, 200000]  
+lr_schedule_values: [7e-4, 5e-4, 1e-4, 7e-5, 5e-5, 1e-5, 5e-6, 1e-6]  # scheduled learning rates
+clipvalue: 1
+weight_decay: 1e-5  #1e-5 is good for AdamW, should be smaller or equal to LR  
+                    #1e-3 is good for Adam 

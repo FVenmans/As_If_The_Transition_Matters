@@ -1,0 +1,90 @@
+#Alternative: managed by file Variables.py
+states:
+  - name: Eshare 
+    init:
+      distribution: normal
+      kwargs:
+        mean: 0.5
+        stddev: 0.25
+  - name: k 
+    init:
+      distribution: truncated_normal
+      kwargs:
+        mean: 35
+        stddev: 1
+  - name: s   #in TtCO2, will be multiplied by 1000
+    init:
+      distribution: truncated_normal
+      kwargs:
+        mean: 3
+        stddev: 0.5
+  - name: A 
+    init:
+      distribution: normal
+      kwargs:
+        mean: 1
+        stddev: 0.1
+  - name: tau 
+    init:
+      distribution: uniform
+      kwargs:
+        minval: 0.00001
+        maxval: 0.9999
+#############################################                               
+policies:
+  - name: id  
+    activation: tf.keras.activations.linear
+    bounds: 
+      upper: 0.15
+      lower: -0.25
+  - name: ic  
+    activation: tf.keras.activations.linear
+    bounds: 
+      upper: 4.
+      lower: 0.8
+  - name: lambdaE  
+    activation: tf.keras.activations.linear
+  - name: lambdak  
+    activation: tf.keras.activations.linear
+    bounds: #marginal utility around 0,06 (y* around 9.6)
+      upper: 0.20
+      lower: 0.02
+  - name: lambdaS  
+    activation: tf.keras.activations.linear
+    bounds: 
+      upper: -0.00001
+      lower: -0.1
+  - name: LambdaA  
+    activation: tf.keras.activations.linear
+    bounds: 
+      upper: 10
+      lower: 0.0001
+  - name: lambdatau  
+    activation: tf.keras.activations.linear
+ #   bounds:   #emissions increase over time (because proportional to A.L) whereas MAC decrease over time. the former dominate so negative shadow price
+ #     upper: -0.0001
+ #     lower: -2
+  - name: V  #value function divided by 100
+    activation: tf.keras.activations.linear
+    bounds:  #apparently, an upper bound without mentioning a lower bound does not work.    
+      upper: -0.01
+      lower: -3.3 
+      
+#############################################            
+definitions:
+  - name: E  #emissions
+  - name: S #cumulative emisions in GtCO2 (state is in TtCO2)
+  - name: t #time
+  - name: M #cumulative abatement over initial cumualtive abatement
+  - name: varphi #slope of abatement function
+  - name: y #production
+  - name: kappa #stranding costs
+  - name: c #consumption
+  - name: kd #dirty capital
+  - name: kc #clean capital
+  - name: y_E #dy/dE
+  - name: y_S #dy/dS
+  - name: y_tau #dy/dtau
+  - name: Etrend
+  - name: v #value function
+  - name: lambdaA

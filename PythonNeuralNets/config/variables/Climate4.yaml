@@ -1,0 +1,86 @@
+#Alternative: managed by file Variables.py
+states:
+  - name: kf
+    init:
+      distribution: normal
+      kwargs:
+        mean: 5.5 #5.5 unscaled
+        stddev: 0.25 #0.25 unscaled
+  - name: kc 
+    init:
+      distribution: truncated_normal
+      kwargs:
+        mean: 0.158
+        stddev: 0.03
+  - name: kd 
+    init:
+      distribution: truncated_normal
+      kwargs:
+        mean: 0.7
+        stddev: 0.02
+  - name: T   
+    init:
+      distribution: truncated_normal
+      kwargs:
+        mean: 1.5
+        stddev: 0.15
+#############################################                               
+policies:
+  - name: if_
+    activation: tf.keras.activations.linear
+    bounds: 
+      upper: 0.50
+      lower: 0.25
+  - name: ic  
+    activation: tf.keras.activations.linear
+    bounds: 
+      upper: 2.5 #will be multiplied by ic_scale (0.1)
+      lower: 0.05
+  - name: id_  
+    activation: tf.keras.activations.linear
+    bounds: 
+      upper: 3.5 #will be multiplied by id_scale (0.01)
+      lower: -40
+  - name: lambdakf  
+    activation: tf.keras.activations.linear
+    bounds: 
+      upper: 1
+      lower: 0.5
+  - name: lambdakc  
+    activation: tf.keras.activations.linear
+    bounds: 
+      upper: 1
+      lower: 0.5 
+  - name: lambdakd  
+    activation: tf.keras.activations.linear
+    bounds: 
+      upper: 1
+      lower: 0.5
+  - name: lambdaT  
+    activation: tf.keras.activations.linear
+    bounds: 
+      upper: -1
+      lower: -7
+  - name: V  #value function divided by 100
+    activation: tf.keras.activations.linear
+    bounds:  #an upper bound without mentioning a lower bound does not work.    
+      upper: -1.6
+      lower: -3
+      
+#############################################            
+definitions:
+  - name: S #cumulative emisions in GtCO2 (state is temp)
+  - name: kf #state kf is 10 times larger
+  - name: id_
+  - name: ic
+  - name: v #value function (the state V is 100 times smaller)
+  
+  - name: varphi_c
+  - name: y #production
+  - name: c #consumption
+  - name: y_kf
+  - name: y_kc
+  - name: y_kd
+  - name: y_T
+
+

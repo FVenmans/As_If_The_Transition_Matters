@@ -1,0 +1,23 @@
+constants:
+    rho: 0.006    #utility discount rate reduced by population growth
+    eta: 1.35     #elasticity of marginal utility wrt consumption
+    #economic model
+    g: 0.02       #exogenous growth rate
+    r: 0.013      #rho+(eta-1)*g #growth adjusted discount rate
+    sigmaS: 0.001 #standard deviation of Brownian motion on S
+    A: 5.115      #total factor productivity from DICE
+    L: 7.403      #popuation from DICE
+    alpha: 0.3    #elasticity of capital in Cobb-Douglas from DICE
+    K0: 223       #initial capital from DICE
+    delta_c: 0.1  #depreciation rate per year
+    #Abatement costs (emissions in TtCO2)
+    phi: 1.26     #MAC intercept
+    varphi: 30.    #MAC slope 
+    E0: 0.042     #phi/varphi #BAU emissions
+    #Climate and damages
+    zeta: 0.6     #TCRE per TeratCO2
+    gammaT: 0.01  #damage as proportion of GDP is exp(0.5*gammaT*T²)
+    gamma: 0.0036 # zeta**2*gammaT  => gamma includes the TCRE
+    S0: 2.0         #initial cumulative emissions (make sure this is float, not integer
+    
+    #parameters used: r,sigmaS,phi,varphi, E0, gamma, S0

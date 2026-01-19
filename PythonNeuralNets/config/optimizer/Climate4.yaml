@@ -1,0 +1,13 @@
+# see https://www.tensorflow.org/api_docs/python/tf/keras/optimizers
+optimizer: Adam #SGD adjusts with LR*gradient, whereas Adam adds or subtracts the unscaled learningrate (for constant gradients over time, slightly higher if past gradients were larger, slightly lower if past variance was large) 
+learning_rate: 5e-6 #1e-4 is fast, 1e-5 is slow, default in Adam is 1e-3. 
+clipvalue: 1 #default=1 maximum update for each weight parameter is 1 (or-1)*learning rate. 
+#beta_1: 0.9 #0.9 is the default. Weight of the latest gradient in decaying mean is 1-beta_1. For beta_1=0, Adam is quasi-identical to RMSProp.
+weight_decay: 1e-4  #In Adam this shrinks pos updates and magnifies neg updates of large weights. If weight is 1, weight decay is the relative shrinkage/enlargement of the learning rate.1e-4 is very conservative. #Also key parameter of AdamW, default value = 0.004. Applied to all weights at every step. Should be 10 to 100 times smaller than the learning rate.
+#momentum: 0.9 #for SGD
+#nesterov: True #for SGD 
+#clipnorm: 1 #suggestion of chatgpt
+
+# Learning rate schedule parameters
+lr_schedule_boundaries: [20000, 40000, 50000]  # steps between changes of LR
+lr_schedule_values: [1e-4, 5e-5, 1e-5, 5e-6]  # schdeuled learning rates

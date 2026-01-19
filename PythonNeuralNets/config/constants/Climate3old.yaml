@@ -1,0 +1,40 @@
+constants: 
+#tabs are required
+#production function
+    alpha: 0.26
+    beta: 0.04
+    epsilon: 0.5
+    varphi_c0: 1
+    varphi_d: 5.25
+    A0: 8.5
+    L0: 8
+    sigma: 0.04 
+    chi : 0.1
+    z : 0.01
+
+#utility and discounting
+    eta : 1.35
+    r : 0.033
+    g : 0.02
+    g_L : 0.005
+    g_tau : 0.015
+    RRA : 1.35
+
+#initial states
+    kf0 : 5.51
+    kc0 : 0.13
+    kd0 : 0.71
+    ks0 : 0
+    S0  : 2 #in TtCO2
+    tau0: 0
+    
+#steady states
+    ss_kf: 5.5
+    ss_kc : 0.136
+    ss_kd : 0.71
+
+#Uncertainty
+    Sigmak : 0.0002 #sd is sqrt(Sigmak)=0.01, which is relatively large for clean capital (almost 10%)
+
+
+

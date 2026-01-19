@@ -1,0 +1,83 @@
+constants: 
+#production function
+    delta: 0.04 
+    alpha: 0.3
+    epsilon_f: -4
+    varphi_f: 0.999999191
+    varphi_E: 8.09e-06
+    sigma0: 2
+    varphi_c: 0.304
+    varphi_d: 0.696
+    xi : 0.01
+    chi : 1
+    chi_s : 4 
+    A0: 8.52
+    L0: 8.14
+    vareps: 300
+    vareps2: 0.004
+    
+#utility and discounting
+    eta : 1.35
+    r : 0.0351
+    g : 0.02
+    g_L : 0.0029
+    g_tau : 0.015
+    RRA : 1.35
+    dt : 1.0 
+    
+#Technical change, emissions and abatement costs
+    omega : 0.5
+    varrho: 0.6
+    g_epsilon : 0.027
+    M0 : 36
+    P_BAU : 57
+
+#stranding costs
+    psi1 : 6.17 # set to 5.98
+    psi2 : 1
+    psi3 : 1.87 #set to 2.06
+    g_psi : 0.0229  #should be equal to g+g_L
+
+#climate and damages
+    zeta : 0.0006
+    gamma : 0.0154
+    
+#scaling to obtain states and policies close to [0,1]. Definitions.x=s_scale * State.x
+    kf_scale : 1 #scale initial distribution AND kf0 if scale changes!
+    ks_scale : 0.01 #Max ks is 0.026
+    v_scale  : 100 
+    id_scale : 0.1 #scale boundaries if scale changes!
+    ic_scale : 0.01 #scale boundaries if scale changes!
+    lambdaks_scale : 1 #scale boundaries if scale changes! lambdaks should be between -0.013 and -0.001
+
+#initial states (used in postprocess and kc0 in TC and T0 in y)
+    kf0 : 4.83 #should be scaled.
+    kc0 : 0.125 #is initial TC
+    kd0 : 0.59
+    ks0 : 0
+    T0  : 1.38 #
+    tau0: 0
+#min & max of states (including steady states)
+    kf_max : 5.5 #unscaled
+    kf_min : 3 #unscaled
+    kc_max : 0.8 
+    kc_min : 0.05 
+    kd_max : 0.4 
+    kd_min : 0.0001
+    T_max : 2.3 
+#min and max of initial policies (should be larger than on optimal path because initial conditions are stochastic)
+    if0_max : 0.33 
+    if0_min : 0.21
+    ic0_max : 0.036 #unscaled, 
+    ic0_min : 0.017 
+    id0_max : -0.010 #unscaled (applies to year 0) This is too strict for dt=4
+    id0_min : -0.025 #unscaled (applies to year 0)
+    lambdaks_max : -0.3 # lambda ks is around -0.67 in period zero, -0.2 in period 1, when ks=0.022 
+    
+###ONLY IN DYNAMICS.PY
+#Uncertainty
+    Sigmak : 0.0001 #temporary value was 1e-4 => sqrt(Sigmak)=1% is the standard deviation. In old paper sd=0.013 => Sigmak=0.000169
+    SigmaS : 0.0 #0.0009 #temporary value was 1e-6 => standard deviation = 0.1%. In old paper sd=0.03=3% => SigmaS=0.0009
+    
+
+

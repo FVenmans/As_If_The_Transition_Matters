@@ -1,0 +1,70 @@
+constants: 
+#tabs are required
+#production function
+    alpha: 0.26
+    beta: 0.04
+    epsilon: 0.5
+    varphi_c0: 1
+    varphi_d: 5.25
+    A0: 8.5
+    L0: 8
+    sigma: 0.04 
+    chi : 0.1  #lower in the 6 state model, but without inertia, policyfunction is too steep at initial conditions.
+    z : 0.01
+
+#utility and discounting
+    eta : 1.35
+    r : 0.033
+    g : 0.02
+    g_L : 0.005
+    g_tau : 0.015
+    RRA : 1.35
+    dt : 5
+
+#Technical change, emissions and abatement costs
+    omega : 0.5
+    varrho: 0.21
+    g_varphi : 0.027
+    M0 : 36
+    E_BAU : 55
+    psi : 1.155
+
+#stranding costs
+    theta1 : 0.005
+    theta2 : 0.0022
+    g_theta1 : 1e-13
+    g_theta2 : 0.02
+    LT : 40
+
+#climate and damages
+    zeta : 0.0006
+    gamma : 0.01
+
+#initial states
+    kf0 : 5.6 #scaled
+    kc0 : 0.158
+    kd0 : 0.71
+    ks0 : 0
+    T0  : 1.2 
+    tau0: 0
+
+#min&max of states 
+    kf_max : 6 #unscaled
+    kf_min : 4
+    kc_max : 0.4
+    kc_min : 0.1
+    kd_max : 0.75
+    kd_min : 0.01
+    T_max : 2.1
+    
+#scaling to obtain states and policies close to [0,1]
+    kf_scale : 1 #Definitions.kf=kf_scale * State.kf . Adjust also boundaries and kf0
+    ic_scale : 0.1 #adjust also boundaries 
+    id_scale : 0.01
+    v_scale  : 100 #Definitions.v= v_scale * PolicyState.V
+#Uncertainty
+    Sigmak : 0.0001 #this is the variance, sqrt(Sigmak)=1% is the standard deviation
+    SigmaS : 0.000001 #standard deviation = 0.1%
+ 
+
+
