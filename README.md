@@ -1,9 +1,1 @@
-This code accompanies the paper "Optimal Climate Policy as if the transition matters". 
-The Julia code solves the deterministic model. It is very precise. 
-The excel code also solves the deterministic model, but the excel solver is not very precise. 
-The python code solves the stochastic model with neural nets, starting from the code from Simon Scheidegger and coauthors. The code also contains solutions for simpler models with 
-1 state (Temperature), 
-3 states (dirty, clean and final capital)
-4 states (three capitals and Temperature)
-5 states (three capitals, Temperature and stranded capital)
-6 states (idem and time, this is the published model). 
+This code accompanies the paper "Optimal climate policy as if the transition matters". The Julia code solves the deterministic model. The Excel code also solves the deterministic model, but the Excel solver is not as precise as the Julia solver. The Python code solves the stochastic model with neural nets, starting from code by Simon Scheidegger and coauthors. The code also contains solutions for simpler models with 1 state (temperature), 3 states (dirty, clean and final capital), 4 states (dirty, clean and final capital, and temperature), 5 states (dirty, clean and final capital, stranded capital, and temperature), 6 states (dirty, clean and final capital, stranded capital, temperature, and time -- this is the published model). 
