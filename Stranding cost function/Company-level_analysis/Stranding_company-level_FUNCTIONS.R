@@ -477,12 +477,16 @@ create_df_FLEI <- function(df_full, winsor_level) {
 
 plot_SCCE <- function(data,
                       winsor_level,
-                      scaling_label = NULL) {
+                      scaling_label = NULL,
+                      max_scce_threshold = NULL) {
   
   stopifnot(all(c("x_start", "x_end", "SCCE", "sector") %in% names(data)))
+  stopifnot(is.null(max_scce_threshold) || (is.numeric(max_scce_threshold) && length(max_scce_threshold) == 1))
+  stopifnot(is.null(max_scce_threshold) || max_scce_threshold > 0)
   
   if (is.null(scaling_label)) scaling_label <- get_scaling_label()
   
+  # --- Base plot ---
   p <- ggplot(data, aes(
     xmin = x_start, xmax = x_end,
     ymin = 0,       ymax = SCCE,
@@ -494,8 +498,8 @@ plot_SCCE <- function(data,
       x = "Embodied emissions (GtCO2e)",
       y = "Stranding Cost per Cumulative Emission (USD/tCO2e)",
       title = paste0(
-        "SCCE (winsorized at ", winsor_level * 100, "%; ",
-        "Scaling factor = ", scaling_label, "; ",
+        "Stranding Cost per Cumulative Emission ",
+        " (winsorized at ", winsor_level * 100, "%; ",
         "N° obs = ", nrow(data), ")"
       ),
       fill = NULL
@@ -505,7 +509,44 @@ plot_SCCE <- function(data,
     theme_bw() +
     theme(legend.position = "bottom")
   
-  list(plot = p, data = data)
+  out <- list(plot = p, data = data)
+  
+  # --- Optional zoom logic ---
+  if (!is.null(max_scce_threshold)) {
+    
+    df_under <- data |>
+      dplyr::filter(!is.na(SCCE), SCCE <= max_scce_threshold, !is.na(x_end))
+    # Find x_end threshold: last company (furthest along x) among those with SCCE <= threshold
+    x_threshold <- if (nrow(df_under) == 0) NA_real_ else max(df_under$x_end)
+    max_scce_under_threshold <- if (nrow(df_under) == 0) NA_real_ else max(df_under$SCCE)
+    n_under <- nrow(df_under)
+    
+    p_zoom <- p +
+      coord_cartesian(
+        ylim = c(0, max_scce_threshold),
+        xlim = c(0, x_threshold)
+      ) +
+      labs(
+        x = "Embodied emissions (GtCO2e)",
+        y = "Stranding Cost per Cumulative Emission (USD/tCO2e)",
+        title = paste0(
+          "Stranding Cost per Cumulative Emission ",
+          "— SCCE \u2264 ", max_scce_threshold,
+          " (winsorized at ", winsor_level * 100, "%; ",
+          "N° obs = ", nrow(data), ")"
+        ),
+        fill = NULL
+      ) 
+    out$plot_zoom <- p_zoom
+    out$zoom <- list(
+      max_scce_threshold = max_scce_threshold,
+      x_threshold = x_threshold,
+      n_under = n_under,
+      max_scce_under_threshold = max_scce_under_threshold
+    )
+  }
+  
+  out
 }
 
 
@@ -524,8 +565,9 @@ plot_FLEI <- function(data,
       x = "Tangible assets (Trillion USD)",
       y = "Forward-Looking Emission Intensity (kgCO2e/USD)",
       title = paste0(
-        "FLEI (winsorized at ", winsor_level * 100, "%; ",
-        "Scaling factor = ", scaling_label, "; ",
+        "Forward-Looking Emission Intensity ",
+        "(winsorized at ", winsor_level * 100, "%; ",
+        # "Scaling factor = ", scaling_label, "; ",
         "N° obs = ", nrow(data), ")"
       ),
       fill = NULL
