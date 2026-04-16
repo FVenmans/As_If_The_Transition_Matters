@@ -929,3 +929,117 @@ x_from_integral <- function(P0,
   sol <- uniroot(target_fn, lower = lower, upper = upper, tol = tol)$root
   list(x = sol, area = area_fn(sol), x0 = x0, P0 = P0, params = c(a = a, b = b, c = c))
 }
+
+
+# Functions to obtain details on companies within a 'strandable capital threshold'
+
+# Returns cumulative emissions (GtCO2e) from x = 0 to x = capital_threshold
+# where X is measured in trillion USD on the empirical FLEI chart
+cum_emissions_empirical_info <- function(X, df = df_FLEI, df_total = df_full) {
+  
+  df_use <- df %>%
+    mutate(
+      width_used   = pmax(0, pmin(x_end, X) - x_start),
+      emissions_gt = width_used * FLEI,
+      included     = width_used > 0
+    )
+  
+  cumulative_emissions_gt <- sum(df_use$emissions_gt, na.rm = TRUE)
+  
+  # Total annual emissions in df_full, converted from MtCO2e to GtCO2e
+  total_emissions_gt <- sum(df_total$CO2e1_Mt, na.rm = TRUE) / 1000
+  
+  list(
+    threshold_tn = X,
+    emissions_gt = cumulative_emissions_gt,
+    n_companies_included = sum(df_use$included, na.rm = TRUE),
+    total_emissions_gt = total_emissions_gt,
+    emissions_share = cumulative_emissions_gt / total_emissions_gt
+  )
+}
+
+# Returns the top 5 sectors and countries among companies included in the threshold
+# Shares are by capital value within the threshold 
+# Returns top-10 rankings within a capital threshold on the empirical FLEI chart
+# Rankings are computed by:
+# (i) share of companies
+# (ii) share of capital value within threshold
+# (iii) share of emissions within threshold
+# for both sectors and countries
+
+composition_rankings_within_threshold <- function(X, df = df_FLEI) {
+  
+  df_in <- df %>%
+    mutate(
+      width_used   = pmax(0, pmin(x_end, X) - x_start),
+      emissions_gt = width_used * FLEI,
+      included     = width_used > 0
+    ) %>%
+    filter(included)
+  
+  n_included <- nrow(df_in)
+  total_capital <- sum(df_in$width_used, na.rm = TRUE)
+  total_emissions <- sum(df_in$emissions_gt, na.rm = TRUE)
+  
+  # ---------- helper to build formatted ranking column ----------
+  make_rank_col <- function(data, group_var, value_var = NULL, mode = c("companies", "capital", "emissions"), top_n = 10) {
+    mode <- match.arg(mode)
+    
+    if (mode == "companies") {
+      out <- data %>%
+        count(.data[[group_var]], name = "value") %>%
+        mutate(share = value / n_included)
+    } else if (mode == "capital") {
+      out <- data %>%
+        group_by(.data[[group_var]]) %>%
+        summarise(value = sum(.data[[value_var]], na.rm = TRUE), .groups = "drop") %>%
+        mutate(share = value / total_capital)
+    } else { # emissions
+      out <- data %>%
+        group_by(.data[[group_var]]) %>%
+        summarise(value = sum(.data[[value_var]], na.rm = TRUE), .groups = "drop") %>%
+        mutate(share = value / total_emissions)
+    }
+    
+    out %>%
+      rename(group = .data[[group_var]]) %>%
+      arrange(desc(share), group) %>%
+      slice_head(n = top_n) %>%
+      mutate(label = sprintf("%s (%.1f%%)", group, 100 * share)) %>%
+      pull(label)
+  }
+  
+  # ---------- sector rankings ----------
+  sec_comp <- make_rank_col(df_in, "sector", mode = "companies", top_n = 10)
+  sec_cap  <- make_rank_col(df_in, "sector", value_var = "width_used",   mode = "capital",   top_n = 10)
+  sec_em   <- make_rank_col(df_in, "sector", value_var = "emissions_gt", mode = "emissions", top_n = 10)
+  
+  # ---------- country rankings ----------
+  ctry_comp <- make_rank_col(df_in, "Country", mode = "companies", top_n = 10)
+  ctry_cap  <- make_rank_col(df_in, "Country", value_var = "width_used",   mode = "capital",   top_n = 10)
+  ctry_em   <- make_rank_col(df_in, "Country", value_var = "emissions_gt", mode = "emissions", top_n = 10)
+  
+  # ---------- pad to same length ----------
+  pad_to <- function(x, n) c(x, rep(NA_character_, n - length(x)))
+  max_len <- max(length(sec_comp), length(sec_cap), length(sec_em),
+                 length(ctry_comp), length(ctry_cap), length(ctry_em))
+  
+  out_table <- data.frame(
+    Sectors_by_Companies = pad_to(sec_comp, max_len),
+    Sectors_by_Capital   = pad_to(sec_cap,  max_len),
+    Sectors_by_Emissions = pad_to(sec_em,   max_len),
+    Countries_by_Companies = pad_to(ctry_comp, max_len),
+    Countries_by_Capital   = pad_to(ctry_cap,  max_len),
+    Countries_by_Emissions = pad_to(ctry_em,   max_len),
+    stringsAsFactors = FALSE
+  )
+  
+  list(
+    threshold_tn = X,
+    n_companies_included = n_included,
+    capital_included_tn = total_capital,
+    emissions_included_gt = total_emissions,
+    table = out_table
+  )
+}
+

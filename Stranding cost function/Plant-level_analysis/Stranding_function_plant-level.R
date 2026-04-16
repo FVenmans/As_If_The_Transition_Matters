@@ -7,7 +7,7 @@
 #*************************
 
 # Install/load needed packages
-pkgs <- c("DEoptim", "dplyr", "ggplot2", "janitor", "minpack.lm", "openxlsx", "Polychrome", "readr", "readxl", "rlang", "tidyr", "writexl", "xtable", "cowplot")
+pkgs <- c("cowplot", "DEoptim", "dplyr", "ggplot2", "janitor", "Polychrome", "writexl", "readxl", "ggpattern", "stringr")
 install.packages(setdiff(pkgs, rownames(installed.packages())))
 invisible(lapply(pkgs, library, character.only = TRUE))
 
@@ -26,31 +26,46 @@ delta<-0.04
 # We calibrate LT to match asset half-life in the model
 #Default value for \delta=0.04 is 34.65736
 LT<-2*log(2)/delta
+# Set life-cycle emission factor for gas power plants (490 g CO2eq/kWh - median value from IPCC AR5 Annex 3)
+LCEF <- 0.00049   # in tCO2/kWh
 
-make_named_colors <- function(levels) {
-  setNames(
-    Polychrome::kelly.colors(length(levels)),
-    levels
-  )
-}
 
 #*************************
 # 1. Data upload and manipulation ----
 #*************************
 
-plant_base_path <- "Plant-level_analysis"
-plant_file <- "GEM-Global-Coal-Plant-Tracker-July-2024.xlsx"
-plant_sheet <- 2
+coal_plant_base_path <- "Plant-level_analysis"
+coal_plant_file_name <- "GEM-Global-Coal-Plant-Tracker-July-2024.xlsx"
+coal_plant_sheet <- 2
 
-df_plants <- get_plant_data(
-  base_path = plant_base_path,
-  file_name = plant_file,
-  sheet = plant_sheet
+gas_plant_base_path <- "Plant-level_analysis"
+gas_plant_file_name <- "Global-Oil-and-Gas-Plant-Tracker-GOGPT-January-2026.xlsx"
+gas_plant_sheet <- 3
+capacity_factors_file_name <- "Capacity_factors_GEM_wiki.xlsx"
+
+df_coal_plants <- get_plant_data(
+  base_path = coal_plant_base_path,
+  file_name = coal_plant_file_name,
+  sheet = coal_plant_sheet
 )
 
+df_gas_plants <- get_plant_data(
+  base_path = gas_plant_base_path,
+  file_name = gas_plant_file_name,
+  sheet = gas_plant_sheet
+)
 
 # Summary Statistics
-df_plants %>%
+df_coal_plants %>%
+  summarise(
+    n_total = n(),
+    n_used_for_avg_planned = sum(!is.na(plant_life_planned)),
+    avg_plant_life_planned = mean(plant_life_planned, na.rm = TRUE),
+    n_used_for_avg_actual = sum(!is.na(plant_life_actual)),
+    avg_plant_life_actual = mean(plant_life_actual, na.rm = TRUE)
+  )
+
+df_gas_plants %>%
   summarise(
     n_total = n(),
     n_used_for_avg_planned = sum(!is.na(plant_life_planned)),
@@ -60,27 +75,30 @@ df_plants %>%
   )
 
 # Run the function to obtain the data
-df_plants_full <- process_gem_data(df_plants, LT)
+df_coal_plants_full <- process_coal_gem_data(df_coal_plants, LT, delta = delta, emis_floor = emis_floor)
+df_gas_plants_full <- process_gas_gem_data(
+  df_gas_plants, LT,
+  delta = delta,
+  LCEF = LCEF,
+  emis_floor = emis_floor,
+  base_path = gas_plant_base_path,
+  file_name = capacity_factors_file_name)
 
-analysis_region_levels <- df_plants_full %>%
-  distinct(`Analysis Region`) %>%
-  arrange(`Analysis Region`) %>%
-  pull(`Analysis Region`)
+# Merge of coal and gas dataset
+df_plants_full <- bind_rows(df_coal_plants_full, df_gas_plants_full)
 
-analysis_region_cols <- make_named_colors(analysis_region_levels)
+write_xlsx(
+  df_plants_full,
+  path = "Results/Results_plant.xlsx"
+)
 
 #*************************
-# 2. SCCE/FLEI plots ----
+# 2. FLEI/SCCE plots ----
 #*************************
 
 #--- Main stand-alone plots ---#
 
-res_plot_SCCE <- plot_SCCE_plants(
-  data = df_plants_full,
-  winsor_level = winsor_level
-)
-p_SCCE<-res_plot_SCCE$plot
-
+# FLEI plot
 res_plot_FLEI <- plot_FLEI_plants(
   data = df_plants_full,
   yvar_scce = "SCCE",
@@ -94,53 +112,68 @@ p_FLEI<-res_plot_FLEI$plot
 # Keep cleaned / winsorised data for later use
 df_FLEI_clean_wins <- res_plot_FLEI$data
 
+# SCCE plot
+res_plot_SCCE <- plot_SCCE_plants(
+  data = df_plants_full,
+  winsor_level = winsor_level
+)
+p_SCCE<-res_plot_SCCE$plot
 
 #--- Simplified base plots ---#
 
 # Create base plots with shorter labels, no legend, shorter titles
-p_scce_simple <- res_plot_SCCE$plot +
-  labs(y = "SCCE (USD/tCO2e)", title= "Stranding Cost per Cumulative Emission") +
-  theme(legend.position = "none")
 p_flei_simple <- res_plot_FLEI$plot +
   labs(y = "FLEI (kgCO2e/USD)", title = "Forward-Looking Emission Intensity") +
   theme(legend.position = "none")
+p_scce_simple <- res_plot_SCCE$plot +
+  labs(y = "SCCE (USD/tCO2e)", title= "Stranding Cost per Cumulative Emission") +
+  theme(legend.position = "none")
 
-
-#--- Stacked SCCE/FLEI plot ---#
-
-main_panels <- plot_grid(
-  p_scce_simple,
-  p_flei_simple,
-  ncol = 1,
-  rel_heights = c(1, 1)
-)
-
-# Shared legend
+# 1. Extract shared legend from the full plot (before stripping)
 shared_legend <- get_legend(
   res_plot_FLEI$plot +
     labs(color = NULL, fill = NULL) +
-    guides(fill = guide_legend(nrow = 1, byrow = TRUE)) +
+    guides(fill = guide_legend(nrow = 2, byrow = TRUE)) +
     theme(
       legend.position = "bottom",
-      legend.box = "horizontal"
+      legend.box      = "horizontal",
+      legend.text     = element_text(size = 7),
+      legend.key.size = unit(0.4, "cm")
     )
 )
 
-# Stacked chart
+# 2. Strip legends from both panels
+p_flei_clean <- p_flei_simple + theme(legend.position = "none")
+p_scce_clean <- p_scce_simple + theme(legend.position = "none")
+
+# 3. Stack the two panels
+main_panels <- plot_grid(
+  p_flei_clean,
+  p_scce_clean,
+  ncol        = 1,
+  rel_heights = c(1, 1)
+)
+
+# 4. Attach the shared legend below
 plot_stacked <- plot_grid(
   main_panels,
   shared_legend,
-  ncol = 1,
-  rel_heights = c(1, 0.12)
+  ncol        = 1,
+  rel_heights = c(1, 0.15)   # increase if legend text is clipped
 )
+
 plot_stacked
 
+ggsave(
+  filename = "Results/FLEI-SCCE_plant_stacked_plot.png",
+  plot     = plot_stacked,
+  width    = 20,
+  height   = 15,
+  units    = "cm",
+  dpi      = 300,
+  bg       = "white"
+)
 
-total_annual_emissions_mt <- df_plants_full %>%
-  dplyr::summarise(
-    total_annual_emissions_mt = sum(`Annual Emissions (MtCO2)`, na.rm = TRUE)
-  ) %>%
-  dplyr::pull(total_annual_emissions_mt)
 
 #*************************
 # 3. Function fitting ---- 
@@ -167,7 +200,7 @@ fit_plant_flei$bic
 # 4. Additional bits of analysis ----
 #*************************
 
-## 4.1 Total emissions per sector ----
+## 4.1 Total emissions per dimension ----
 summary_by_region <- plant_summary(df_plants_full, `Analysis Region`)
 summary_by_region
 

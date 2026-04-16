@@ -35,7 +35,7 @@ get_plant_data <- function(base_path, file_name, sheet = 2) {
 }
 
 
-process_gem_data <- function(data, LT) {
+process_coal_gem_data <- function(data, LT, delta = 0.04, emis_floor = 0) {
   
   # -------------------- Initial Data Cleaning --------------------
   
@@ -48,7 +48,7 @@ process_gem_data <- function(data, LT) {
     ) %>%
     filter(
       status == "operating",
-      Annual_co2 > 0
+      Annual_co2 * 1e6 >= emis_floor  # emis_floor in tCO2; Annual_co2 in MtCO2
     ) %>%
     mutate(
       Annual_co2  = as.numeric(Annual_co2),
@@ -66,8 +66,10 @@ process_gem_data <- function(data, LT) {
   
   # -------------------- Overnight Cost of Capital --------------------
   
-  OCC_values <- c(
+  # OCC values (USD/kW) from von Dulong (2023)
+  OCC_coal_values <- c(
     "Japan" = 2419,
+    "Korea" = 1151,
     "United States" = 2100,
     "China" = 800,
     "India" = 1200,
@@ -81,18 +83,19 @@ process_gem_data <- function(data, LT) {
   data <- data %>%
     mutate(
       OCC = case_when(
-        Country == "China" ~ OCC_values["China"],
-        Country == "India" ~ OCC_values["India"],
-        Country == "United States" ~ OCC_values["United States"],
-        Country == "Brazil" ~ OCC_values["Brazil"],
-        Country == "Japan" ~ OCC_values["Japan"],
-        region == "Europe" ~ OCC_values["EU"],
-        region == "Oceania" ~ OCC_values["Australia"],
+        Country == "China" ~ OCC_coal_values["China"],
+        Country == "India" ~ OCC_coal_values["India"],
+        Country == "United States" ~ OCC_coal_values["United States"],
+        Country == "Brazil" ~ OCC_coal_values["Brazil"],
+        Country == "Japan" ~ OCC_coal_values["Japan"],
+        Country == "Korea" ~ OCC_coal_values["Korea"],
+        region == "Europe" ~ OCC_coal_values["EU"],
+        region == "Oceania" ~ OCC_coal_values["Australia"],
         Country %in% c(
           "Chile", "Colombia", "Canada",
           "Israel", "Mexico", "Türkiye"
-        ) ~ OCC_values["Other OECD countries"],
-        TRUE ~ OCC_values["Other non-OECD countries"]
+        ) ~ OCC_coal_values["Other OECD countries"],
+        TRUE ~ OCC_coal_values["Other non-OECD countries"]
       )
     )
   
@@ -135,7 +138,7 @@ process_gem_data <- function(data, LT) {
       "unit_name", "plant_name_other", "plant_name_local", "owner", "parent", "status", "emission_factor_kg_of_co2_per_tj", 
       "retired_year", "planned_retirement", "coal_source", "alternate_fuel", "location", 
       "local_area_taluk_county", "major_area_prefecture_district", "subnational_unit_province_state", 
-      "latitude", "longitude", "location_accuracy", "permits", "permit_date", "permit_parsed", "Plant_age",
+      "location_accuracy", "permits", "permit_date", "permit_parsed", "Plant_age",
       "captive", "captive_industry_use", "capacity_factor", "captive_residential_use", "heat_rate_btu_per_k_wh", 
       "plant_life_planned", "plant_life_actual", "lifetime_co2_million_tonnes"
     )
@@ -144,7 +147,9 @@ process_gem_data <- function(data, LT) {
     
     # Reorder and rename columns for presentation
     data <- data %>%
+      mutate(`Plant type` = "coal") %>% 
       dplyr::select(
+        `Plant type`,
         Country,
         analysis_region,
         OCC,
@@ -158,7 +163,9 @@ process_gem_data <- function(data, LT) {
         Gross_Value,
         Net_Value,
         SCCE,
-        FLEI
+        FLEI,
+        longitude,
+        latitude
       ) %>%
       dplyr::rename(
         `Analysis Region` = analysis_region,
@@ -177,13 +184,239 @@ process_gem_data <- function(data, LT) {
 
 
 
+
+process_gas_gem_data <- function(data, LT, delta = 0.04, LCEF, emis_floor = 0, base_path, file_name, sheet = 1) {
+  
+  # -------------------- Initial Data Cleaning --------------------
+  
+  data <- data %>%
+    rename(
+      Country      = country_area,
+      Capacity_MW  = capacity_mw,
+      Start_Year   = start_year
+    ) %>%
+    filter(
+      status == "operating",
+    ) %>%
+    mutate(
+      Start_Year  = as.numeric(Start_Year),
+      Plant_age   = 2024 - Start_Year,
+      Capacity_MW = as.numeric(Capacity_MW)
+    )
+  # -------------------- Adding Emission Estimates --------------------
+  
+  # Build file path
+  cf_file_path <- file.path(base_path, file_name)
+  
+  # Read & clean CF data 
+  
+  cf_table <- read_excel(cf_file_path, sheet = sheet) %>%
+    janitor::clean_names() %>%
+    rename(
+      Country = country_area,
+      CF = capacity_factor_to_use
+    ) %>%
+    mutate(
+      CF = as.numeric(gsub("%", "", CF)),
+      CF = pmin(CF, 1)   # cap at 1
+    ) %>%
+    select(Country, CF)
+  
+  
+  # Calculate the capacity factors
+  # Annual_co2: Capacity_MW * 1000 kW/MW * CF * 8760 h/yr * LCEF tCO2/kWh / 1e6 t/Mt = MW*CF*8760*LCEF/1000 MtCO2/yr
+  data <- data %>%
+    left_join(cf_table, by = "Country") %>%
+    mutate(
+      Annual_co2 = Capacity_MW * CF * 8760 * LCEF / 1000
+    ) %>%
+    filter(Annual_co2 * 1e6 >= emis_floor)  # emis_floor in tCO2; Annual_co2 in MtCO2
+  
+  # -------------------- Filtering out oil Plants -------------
+  
+  data <- data %>%
+    filter(
+      # Keep rows that are not pure oil: exclude "fossil liquids" unless they also contain "fossil gas"
+      !str_detect(fuel, "fossil liquids") | str_detect(fuel, "fossil gas")
+    )
+  
+  # -------------------- Remaining Lifetime --------------------
+  
+  data <- data %>%
+    mutate(
+      computed_remaining_years = LT - Plant_age
+    ) %>%
+    filter(computed_remaining_years > 0)
+  
+  # -------------------- Overnight Cost of Capital --------------------
+  
+  # OCC values (USD/kW) from von Dulong (2023)
+  OCC_gas_values <- c(
+    "Japan" = 1109,
+    "United States" = 1000,
+    "China" = 560,
+    "India" = 700,
+    "Brazil" = 847,
+    "Korea" = 973,
+    "Mexico" = 601,
+    "Australia" = 812,
+    "EU" = 1000,
+    "Other OECD countries" = 914,
+    "Other non-OECD countries" = 702
+  )
+  
+  data <- data %>%
+    mutate(
+      OCC = case_when(
+        Country == "China" ~ OCC_gas_values["China"],
+        Country == "India" ~ OCC_gas_values["India"],
+        Country == "United States" ~ OCC_gas_values["United States"],
+        Country == "Brazil" ~ OCC_gas_values["Brazil"],
+        Country == "Japan" ~ OCC_gas_values["Japan"],
+        Country == "Mexico" ~ OCC_gas_values["Mexico"],
+        Country == "South Korea" ~ OCC_gas_values["Korea"],
+        region == "Europe" ~ OCC_gas_values["EU"],
+        region == "Oceania" ~ OCC_gas_values["Australia"],
+        Country %in% c(
+          "Chile", "Colombia", "Canada",
+          "Israel", "Türkiye"
+        ) ~ OCC_gas_values["Other OECD countries"],
+        TRUE ~ OCC_gas_values["Other non-OECD countries"]
+      )
+    )
+  
+  data <- data %>%
+    mutate(
+      analysis_region = case_when(
+        region == "Asia" & Country == "China" ~ "China",
+        region == "Asia" & Country == "India" ~ "India",
+        region == "Asia"                     ~ "Rest of Asia",
+        TRUE                                 ~ region
+      )
+    )
+  
+  # -------------------- Asset Values --------------------
+  
+  data <- data %>%
+    mutate(
+      Gross_Value = OCC * (Capacity_MW / 1000),
+      Net_Value   = pmax(Gross_Value * (1 - Plant_age / LT), 0)
+    )
+  
+  # -------------------- Emissions, SCCE, FLEI --------------------
+  
+  data <- data %>%
+    mutate(
+      CO2e1Cum_age = Annual_co2 * computed_remaining_years,
+      
+      SCCE = ifelse(
+        Annual_co2 > 0 & computed_remaining_years > 0,
+        Gross_Value / (Annual_co2 * LT),
+        NA_real_
+      ), 
+      
+      # FLEI: forward-looking emissions per $ of net PPE over remaining life
+      FLEI = ifelse(!is.na(Net_Value) &  Net_Value > 0, (Annual_co2*computed_remaining_years*delta) / Net_Value, NA_real_)
+    )
+  
+  cols_to_drop <- c(
+    "gem_unit_phase_id", "gem_location_id", "wiki_url", "start_year", "subregion", "region",
+    "unit_name", "plant_name_other", "plant_name_local", "owner", "parent", "status", "emission_factor_kg_of_co2_per_tj", 
+    "retired_year", "planned_retirement", "coal_source", "alternate_fuel", "location", 
+    "local_area_taluk_county", "major_area_prefecture_district", "subnational_unit_province_state", 
+    "location_accuracy", "permits", "permit_date", "permit_parsed", "Plant_age",
+    "captive", "captive_industry_use", "capacity_factor", "captive_residential_use", "heat_rate_btu_per_k_wh", 
+    "plant_life_planned", "plant_life_actual", "lifetime_co2_million_tonnes"
+  )
+  data <- data %>% select(-any_of(cols_to_drop))
+  
+  
+  # Reorder and rename columns for presentation
+  data <- data %>%
+    mutate(`Plant type` = "gas") %>% 
+    dplyr::select(
+      `Plant type`,
+      Country,
+      analysis_region,
+      OCC,
+      plant_name,
+      Capacity_MW,
+      CF,
+      turbine_engine_technology,
+      fuel,
+      Annual_co2,
+      computed_remaining_years,
+      CO2e1Cum_age,
+      Gross_Value,
+      Net_Value,
+      SCCE,
+      FLEI,
+      longitude,
+      latitude
+    ) %>%
+    dplyr::rename(
+      `Analysis Region` = analysis_region,
+      Plant             = plant_name,
+      `Capacity (MW)`   = Capacity_MW,
+      `Turbine Engine Technology` = turbine_engine_technology,
+      `Fuel Type`       = fuel,
+      `Annual Emissions (MtCO2)` = Annual_co2,
+      `Computed Remaining Lifetime (years)` = computed_remaining_years,
+      `Computed Lifetime Emissions (MtCO2)` = CO2e1Cum_age
+    )
+  
+  
+  return(data)
+}
+
 #*************************
 ## 2. Plotting functions ----
 #*************************
+
+# Shared colour palette for region × plant-type combinations used in all plant-level plots
+make_region_palette <- function() {
+  region_colors <- c(
+    "oceania"      = "#17BECF",
+    "africa"       = "#D62728",
+    "americas"     = "#1F77B4",
+    "europe"       = "#2CA02C",
+    "rest of asia" = "#E5671A",
+    "india"        = "#9467BD",
+    "china"        = "#E6A817"
+  )
+
+  lighten <- function(col, amount = 0.55) {
+    col <- col2rgb(col) / 255
+    col <- col + (1 - col) * amount
+    rgb(col[1], col[2], col[3])
+  }
+
+  regions <- names(region_colors)
+
+  region_type_levels <- c(
+    paste(regions, "gas",  sep = "_"),
+    paste(regions, "coal", sep = "_")
+  )
+
+  cols <- unlist(lapply(regions, function(r) {
+    v <- c(region_colors[[r]], lighten(region_colors[[r]]))
+    names(v) <- paste(r, c("coal", "gas"), sep = "_")
+    v
+  }))
+  cols <- cols[region_type_levels]
+
+  labels <- setNames(
+    c(
+      sapply(regions, function(r) paste(tools::toTitleCase(gsub("_", " ", r)), "— Gas")),
+      sapply(regions, function(r) paste(tools::toTitleCase(gsub("_", " ", r)), "— Coal"))
+    ),
+    region_type_levels
+  )
+
+  list(region_type_levels = region_type_levels, cols = cols, labels = labels)
+}
+
 plot_SCCE_plants <- function(data, winsor_level, yvar = "SCCE") {
-  
-  # -------------------- Ordering --------------------
-  
   data <- data %>%
     arrange(SCCE) %>%
     mutate(
@@ -196,25 +429,41 @@ plot_SCCE_plants <- function(data, winsor_level, yvar = "SCCE") {
   q_lower <- quantile(data[[yvar]], winsor_level, na.rm = TRUE)
   q_upper <- quantile(data[[yvar]], 1 - winsor_level, na.rm = TRUE)
   
-  # === Count winsorized observations ===
   n_lower <- sum(data[[yvar]] < q_lower, na.rm = TRUE)
   n_upper <- sum(data[[yvar]] > q_upper, na.rm = TRUE)
   
-  # === Count winsorized observations ===
-  
-  # Winsorize only y-variable
+  # Winsorize, normalise region/type labels, and compute region_type key
   data_winsorized <- data %>%
     mutate(
       !!sym(yvar) := pmin(pmax(!!sym(yvar), q_lower), q_upper)
-    )
+    ) %>%
+    mutate(
+      `Plant type`      = tolower(trimws(as.character(`Plant type`))),
+      `Plant type`      = ifelse(is.na(`Plant type`), "unknown", `Plant type`),
+      `Analysis Region` = tolower(trimws(`Analysis Region`))
+    ) %>%
+    mutate(region_type = paste(`Analysis Region`, `Plant type`, sep = "_"))
+  
+  pal               <- make_region_palette()
+  region_type_levels <- pal$region_type_levels
+  cols              <- pal$cols
+  labels            <- pal$labels
+
+  data_winsorized$region_type <- factor(
+    data_winsorized$region_type,
+    levels = rev(region_type_levels)
+  )
   
   # Plot "merit-order" rectangles
-  p <- ggplot(data_winsorized, aes_string(
-    xmin = "x_start_age", xmax = "x_end_age",
-    ymin = "0",       ymax = yvar,
-    fill = "`Analysis Region`"
+  p <- ggplot(data_winsorized, aes(
+    xmin = x_start_age,
+    xmax = x_end_age,
+    ymin = 0,
+    ymax = .data[[yvar]],
+    fill = region_type
   )) +
     geom_rect(linewidth = 0.1) +
+    scale_fill_manual(values = cols, labels = labels, drop = FALSE) +
     scale_x_continuous(expand = c(0, 0)) +
     labs(
       x = "Embodied Emissions (GtCO2e)",
@@ -225,9 +474,15 @@ plot_SCCE_plants <- function(data, winsor_level, yvar = "SCCE") {
         "N° obs = ", nrow(data_winsorized), ")"
       )
     ) +
-    scale_fill_manual(values = analysis_region_cols) +
-    theme_bw()
-  # Return plot + data + counts
+    theme_bw() +
+    theme(
+      axis.text  = element_text(size = 12),
+      axis.title = element_text(size = 13),
+      legend.text  = element_text(size = 20),
+      plot.title   = element_text(size = 14)
+    )
+  # -------------------- Return --------------------
+  
   list(
     plot = p,
     data = data_winsorized,
@@ -239,11 +494,11 @@ plot_SCCE_plants <- function(data, winsor_level, yvar = "SCCE") {
 }
 
 plot_FLEI_plants <- function(data,
-                      yvar_scce       = "SCCE",
-                      xvar_assets     = "Net_Value",    
-                      delta           = 0.04,
-                      LT              = 2*log(2)/delta,
-                      winsor_level    = 0.05) {
+                             yvar_scce       = "SCCE",
+                             xvar_assets     = "Net_Value",    
+                             delta           = 0.04,
+                             LT              = 2*log(2)/delta,
+                             winsor_level    = 0.05) {
   
   stopifnot(all(c(yvar_scce, xvar_assets, "Annual Emissions (MtCO2)", "Gross_Value") %in% names(data)))
   
@@ -252,53 +507,84 @@ plot_FLEI_plants <- function(data,
                   !is.na(.data[[xvar_assets]]), .data[[xvar_assets]] > 0,
                   !is.na(Gross_Value), Gross_Value > 0) %>%
     mutate(
-      FLEI_raw = delta *1e3 / (.data[[yvar_scce]]), #transform mtCO2e/USD (SCCE) into kgCO2e/USD
-      Net_Value_trillion = .data[[xvar_assets]] / 1e6, #transform ml.USD into tr.USD
+      # FLEI = delta / SCCE; ×1e3 converts SCCE from USD/tCO2 to USD/kgCO2, giving FLEI in kgCO2/USD
+      FLEI_raw           = delta * 1e3 / (.data[[yvar_scce]]),
+      Net_Value_trillion = .data[[xvar_assets]] / 1e6
     )
   
-  ql <- quantile(df$FLEI_raw, winsor_level, na.rm = TRUE)
+  ql <- quantile(df$FLEI_raw, winsor_level,     na.rm = TRUE)
   qu <- quantile(df$FLEI_raw, 1 - winsor_level, na.rm = TRUE)
   
-  
-  # === Count winsorized observations ===
   n_l <- sum(df$FLEI_raw < ql, na.rm = TRUE)
   n_u <- sum(df$FLEI_raw > qu, na.rm = TRUE)
+  
+  # -------------------- CLEANING --------------------
+  
+  df <- df %>%
+    mutate(
+      `Analysis Region` = tolower(trimws(`Analysis Region`)),
+      `Plant type`      = tolower(trimws(as.character(`Plant type`))),
+      `Plant type`      = ifelse(is.na(`Plant type`), "unknown", `Plant type`)
+    ) %>%
+    mutate(region_type = paste(`Analysis Region`, `Plant type`, sep = "_"))
+  
+  # -------------------- PALETTE --------------------
+
+  pal               <- make_region_palette()
+  region_type_levels <- pal$region_type_levels
+  cols              <- pal$cols
+  labels            <- pal$labels
+  
+  # -------------------- WINSORISE & ORDER --------------------
   
   df_w <- df %>%
     arrange(desc(FLEI_raw)) %>%
     mutate(
-      FLEI = pmin(pmax(FLEI_raw, ql), qu),
+      FLEI     = pmin(pmax(FLEI_raw, ql), qu),
       x_start  = dplyr::lag(cumsum(Net_Value_trillion), default = 0),
       x_end    = cumsum(Net_Value_trillion),
-      x_center = 0.5 * (x_start + x_end)
+      x_center = 0.5 * (x_start + x_end),
+      region_type = factor(region_type, levels = rev(region_type_levels))
     )
   
-  p <- ggplot(df_w, aes(xmin = x_start, xmax = x_end, ymin = 0, ymax = FLEI, fill = .data[["Analysis Region"]])) +
-    geom_rect (linewidth = 0.1) +
+  # -------------------- PLOT --------------------
+  
+  p <- ggplot(df_w, aes(
+    xmin = x_start, xmax = x_end,
+    ymin = 0,        ymax = FLEI,
+    fill = region_type
+  )) +
+    geom_rect(linewidth = 0.1) +
+    scale_fill_manual(values = cols, labels = labels, drop = FALSE) +
     scale_x_continuous(expand = c(0, 0)) +
     labs(
-      x = "Coal plant value (Trillion USD)",
-      y = "FLEI (kgCO2e/USD)",
+      x     = "Power plant value (Trillion USD)",
+      y     = "FLEI (kgCO2e/USD)",
       title = paste0(
         "FLEI ",
         "(Data winsorized at ", winsor_level * 100, "%; ",
         "N° obs = ", nrow(df_w), ")"
       )
     ) +
-    scale_fill_manual(values = analysis_region_cols) +
-    theme_bw()
-  
+    theme_bw() +
+    theme(
+      axis.text  = element_text(size = 12),
+      axis.title = element_text(size = 13),
+      legend.text  = element_text(size = 20),
+      plot.title   = element_text(size = 14)
+    )
   
   list(
-    plot = p,
-    data = df_w,        # plotted dataframe (winsorized, ordered, with rectangles)
-    data_raw = df,      # pre-winsorized, filtered
-    q_lower = ql,
-    q_upper = qu,
-    winsor_l = n_l,
-    winsor_u = n_u
+    plot      = p,
+    data      = df_w,
+    data_raw  = df,
+    q_lower   = ql,
+    q_upper   = qu,
+    winsor_l  = n_l,
+    winsor_u  = n_u
   )
 }
+
 
 #*************************
 ## 3. Function fitting ----
@@ -467,7 +753,7 @@ fit_flei_deoptim <- function(
     geom_line(data = pred_df, aes(x = x, y = y), linewidth = 1) +
     labs(
       title = title_txt,
-      x = "Coal plant Value (Trillion USD)",
+      x = "Power plant value (Trillion USD)",
       y = "FLEI (kgCO2/USD)"
     ) +
     theme_bw()
