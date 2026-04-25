@@ -10,7 +10,7 @@ states:
     init:
       distribution: truncated_normal 
       kwargs:
-        mean: 0.135
+        mean: 0.17
         stddev: 0.013
   - name: kd 
     init:
@@ -23,7 +23,7 @@ states:
       distribution: uniform
       kwargs:
         minval: 0 
-        maxval: 1 # will be multiplied by ks_scale (0.01) 
+        maxval: 1.5 # will be multiplied by ks_scale (0.01) 
   - name: T   # in °C
     init:
       distribution: truncated_normal
@@ -39,7 +39,7 @@ states:
   - name: y_kf
   - name: y_kc
   - name: y_kd
-  - name: y_S
+  - name: y_T
     
 #############################################                               
 policies:
@@ -56,24 +56,25 @@ policies:
   - name: id  
     activation: tf.keras.activations.linear
     bounds: 
-      upper: 3 # multiplied by 0.01 after scaling
-      lower: -3 # multiplied by 0.01 after scaling  
+      upper: 1.0 # multiplied by 0.01 after scaling
+      penalty_upper: 1e-2 #(default penalty is error/bound)
+      lower: -4 # multiplied by 0.01 after scaling  
   - name: lambdaks
-    activation: tf.keras.activations.linear #should be negative. For a given dirty capital, increased ks gives lower opportunity for cheap stranding.
-    bounds: # lambdaks is -0.67 at start, -0.06 in year 4 and converges to zero thereafter
-      upper: -0.0000001 # multiplied by 1 after scaling 
-      penalty_upper: 1e-2
-      lower: -1.2   # multiplied by 1 after scaling 
+    activation: tf.keras.activations.linear 
+    bounds: # When lambdaks is overestimated, kink at id=0 may appear.
+      upper: 1.5 # multiplied by 1 after scaling 
+      lower: 0.0001   # multiplied by 1 after scaling 
+      penalty_lower: 1e-2
   - name: lambdaT  
     activation: tf.keras.activations.linear
     bounds: 
       upper: -2
       lower: -6 #steady state of model is 2.3 at temperature of 1.82°C, 2.9 at steady state temperature of 2.3°C
-#  - name: lambdatau  
+#  - name: lambdakd  
 #    activation: tf.keras.activations.linear
 #    bounds: 
-#      upper: 1.5 #time should not matter in the long run because TC converges to zero and increasing carbon intensity does not matter at zero emissions
-#      lower: -1.5 #often negative because increasing emission intensity of dirty capital. TC (positive effect on lambdatau) has less effect.
+#      upper: 3 
+#      lower: -1.5 
   - name: V  #value function divided by 100
     activation: tf.keras.activations.linear
     bounds:  #an upper bound without mentioning a lower bound does not work.    
@@ -99,13 +100,11 @@ definitions:
   - name: a_d_neg
   
   - name: t
-#  - name: t_tau
   - name: AL
   - name: M
   
   - name: epsilon
   - name: epsilon_M
-#  - name: epsilon_t
 
   - name: Ebase
   - name: E #energy 
@@ -119,22 +118,21 @@ definitions:
   - name: y_kf
   - name: y_kc
   - name: y_kd
-  - name: y_S
+  - name: y_T
   - name: y_epsilon
 
   - name: ks_ratio
+  - name: g_psi
   - name: P #pollution
   - name: P_ks
   - name: P_kd
-#  - name: P_tau
 
   - name: c #consumption
   - name: U_c
-#  - name: c_tau
   
   - name: lambdakf
   - name: lambdakc
   - name: lambdakd
-
+  - name: SCC
 
 

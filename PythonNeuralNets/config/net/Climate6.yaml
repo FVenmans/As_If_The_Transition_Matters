@@ -1,6 +1,6 @@
 layers:  
   - hidden:
-     units: 128
+     units: 200 #128
      type: dense
      activation: gelu
      init_scale: 0.01
@@ -8,7 +8,7 @@ layers:
      #batch_normalize:
      #  momentum: 0.99          
   - hidden:
-     units: 128
+     units: 200 #128
      type: dense
      activation: gelu
      init_scale: 0.01
@@ -16,7 +16,7 @@ layers:
      #batch_normalize:
      #  momentum: 0.99    
   - hidden:
-     units: 64
+     units: 100 #64
      type: dense
      activation: gelu
      init_scale: 0.01

@@ -46,7 +46,8 @@ P_BAU = Parameters.P_BAU
 psi1 = Parameters.psi1
 psi2 = Parameters.psi2
 psi3 = Parameters.psi3
-g_psi = Parameters.g_psi
+g_psi0 = Parameters.g_psi0
+gg_psi = Parameters.gg_psi
 
 #climate and damages
 zeta = Parameters.zeta
@@ -99,72 +100,85 @@ if Parameters.expectation_type == 'monomial':
     shock_values, shock_probs = State.monomial_rule([math.sqrt(Sigmak*dt), math.sqrt(Sigmak*dt), math.sqrt(Sigmak*dt), math.sqrt(SigmaS * dt)]) 
 
 def total_step_random(s,p): #s=prev_state, p=policystate
-    ar = AR_step(s,p)
-    shock = shock_step_random(s,p)
+    ar = AR_step(s)
+    shock = shock_step_random(s)
     policy = policy_step(s,p)
-    #total = ar + shock + policy #original code, to be combined with a function augment_state(state) for multiplicative errors
-    total = ar * tf.math.exp(shock) + policy
-    #total = tf.where(total > 0, total, tf.constant(0.00001, dtype=tf.float32)) # avoid errors with negative dirty capital This gave infinite adjustment costs.
-    total = 0.001 + tf.nn.softplus(200 * (total - 0.001)) / 200 
+    total = ar + shock + policy 
+    #avoid negative capital
+    total = State.update(total, "kf",  0.001 + tf.nn.softplus(100 * (State.kf(total) - 0.001)) / 100)
+    total = State.update(total, "kc",  0.001 + tf.nn.softplus(100 * (State.kc(total) - 0.001)) / 100)
+    total = State.update(total, "kd", -0.005+ tf.nn.softplus(500 * (State.kd(total) + 0.005)) / 500) # at zero investment, this gives a steady state of 0.003
     return augment_state(total)  
 
 # same as above, but non randomized shock, but rather the same shock for each realization
-def total_step_spec_shock(s,p, shock_index):
-    ar = AR_step(s,p)
-    shock = shock_step_spec_shock(s,p, shock_index)
+def total_step_spec_shock(s, p, shock_index):
+    ar = AR_step(s)
+    shock = shock_step_spec_shock(s, shock_index)
     policy = policy_step(s,p)
-    #total = ar + shock + policy
-    total = ar * tf.math.exp(shock) + policy
-    total = tf.where(total > 0.00001, total, tf.constant(0.00001, dtype=tf.float32))# avoid errors with negative dirty capital
+    total = ar + shock + policy
+    total = State.update(total, "kf", 0.001 + tf.nn.softplus(100 * (State.kf(total) - 0.001)) / 100)
+    total = State.update(total, "kc", 0.001 + tf.nn.softplus(100 * (State.kc(total) - 0.001)) / 100)
+    total = State.update(total, "kd", -0.005+ tf.nn.softplus(500 * (State.kd(total) +0.005)) / 500) # at zero investment, this gives a steady state of 0.003
     return augment_state(total)  
 
-def augment_state(s):
-    state = State.update(s, "y_kf", Definitions.y_kf(s,None))
-    state = State.update(s, "y_kc", Definitions.y_kc(s,None))
-    state = State.update(s, "y_kd", Definitions.y_kd(s,None))
-    state = State.update(s, "y_S", Definitions.y_S(s,None))
-    return state
+def augment_state(snext):
+    snext = State.update(snext, "y_kf", Definitions.y_kf(snext,None))
+    snext = State.update(snext, "y_kc", Definitions.y_kc(snext,None))
+    snext = State.update(snext, "y_kd", Definitions.y_kd(snext,None))
+    snext = State.update(snext, "y_T" , Definitions.y_T(snext,None))
+    #Scheidegger adds tf.math.exp(shock) here, but this adds a trend of sigma²/2 (also not possible with investment)    
+    return snext
 
-def AR_step(s,p):  #I added p as a second argument to be able to use definitions
+def AR_step(s):  
     # autoregressive components
     ar_step = tf.zeros_like(s)
     ar_step = State.update(ar_step, "kf", State.kf(s) * (1-delta-g_L-g) ** dt) 
     ar_step = State.update(ar_step, "kc", State.kc(s) * (1-delta-g_L-g) ** dt)
     ar_step = State.update(ar_step, "kd", State.kd(s) * (1-delta-g_L-g) ** dt)
-    ar_step = State.update(ar_step, "T",  State.T(s))  
+    ar_step = State.update(ar_step, "T" , State.T(s))  
     ar_step = State.update(ar_step, "ks", State.ks(s) * (1-delta-g_L-g) ** dt) 
     ar_step = State.update(ar_step, "tau", 1 - (1-State.tau(s)) * tf.math.exp(-g_tau * dt))
     #ar_step = State.update(ar_step, "yT", Parameters.rho_yT * tf.math.log(State.yT(s)) + (1- Parameters.rho_yT) * tf.math.log( Parameters.yT_bar))
     return ar_step
 
-def shock_step_random(s,p): #I added p as a second argument to be able to use definitions
+def shock_step_random(s):
     shock_step = tf.zeros_like(s) 
     random_normals = Parameters.rng.normal([tf.shape(s)[0],4]) #order of shocks: kf,kc,kd,S #original uses s.shape[0],4
     #shock_step = State.update(shock_step, "yT", random_normals[:,1] * Parameters.sigma_yT)
     #      return State.update(shock_step, "delta", random_normals[:,2] * Parameters.sigma_delta)
+    #this additive shock is better: it avoids pos trend from lognormal shocks and avoids shock on decayed capital.
+    shock_step = State.update(shock_step, "kf", State.kf(s) * random_normals[:,0] * math.sqrt(Sigmak) * dt)  
+    shock_step = State.update(shock_step, "kc", State.kc(s) * random_normals[:,1] * math.sqrt(Sigmak) * dt)
+    shock_step = State.update(shock_step, "kd", State.kd(s) * random_normals[:,2] * math.sqrt(Sigmak) * dt)
+    shock_step = State.update(shock_step, "T" , State.T(s)  * random_normals[:,3] * math.sqrt(SigmaS) * dt) 
+    """# old code to be used with ar * tf.math.exp(shock)
     shock_step = State.update(shock_step, "kf", random_normals[:,0] * math.sqrt(Sigmak * dt) )
     shock_step = State.update(shock_step, "kc", random_normals[:,1] * math.sqrt(Sigmak * dt) ) 
     shock_step = State.update(shock_step, "kd", random_normals[:,2] * math.sqrt(Sigmak * dt) )
-    shock_step = State.update(shock_step, "T" , random_normals[:,3] * math.sqrt(SigmaS * dt) )
+    shock_step = State.update(shock_step, "T" , random_normals[:,3] * math.sqrt(SigmaS * dt) )"""
     return shock_step
 
-def shock_step_spec_shock(s, p, shock_index):
+def shock_step_spec_shock(s, shock_index):
     # Use a specific shock - for calculating expectations
     shock_step = tf.zeros_like(s) 
     #shock_step = State.update(shock_step,"rf", tf.repeat(shock_values[shock_index,0], s.shape[0]))
     #shock_step = State.update(shock_step,"yT", tf.repeat(shock_values[shock_index,1], s.shape[0]))
-    shock_step = State.update(shock_step,"kf", tf.repeat(shock_values[shock_index,0] , tf.shape(s)[0])) #original s.shape[0]
+    shock_step = State.update(shock_step,"kf", State.kf(s) * tf.repeat(shock_values[shock_index,0] , tf.shape(s)[0]))   
+    shock_step = State.update(shock_step,"kc", State.kc(s) * tf.repeat(shock_values[shock_index,1] , tf.shape(s)[0]))
+    shock_step = State.update(shock_step,"kd", State.kd(s) * tf.repeat(shock_values[shock_index,2] , tf.shape(s)[0]))
+    shock_step = State.update(shock_step,"T" , State.T(s)  * tf.repeat(shock_values[shock_index,3] , tf.shape(s)[0])) 
+    """shock_step = State.update(shock_step,"kf", tf.repeat(shock_values[shock_index,0] , tf.shape(s)[0])) 
     shock_step = State.update(shock_step,"kc", tf.repeat(shock_values[shock_index,1] , tf.shape(s)[0]))
     shock_step = State.update(shock_step,"kd", tf.repeat(shock_values[shock_index,2] , tf.shape(s)[0]))
-    shock_step = State.update(shock_step,"T",  tf.repeat(shock_values[shock_index,3] , tf.shape(s)[0]))
+    shock_step = State.update(shock_step,"T",  tf.repeat(shock_values[shock_index,3] , tf.shape(s)[0]))"""
     return    shock_step
 
 def policy_step(s, p):
     #This function gives the policy that is added to each stock 
     policy_step = tf.zeros_like(s) 
-    policy_step = State.update(policy_step, "kf", (PolicyState.if_(p)  - chi * Definitions.a_f(s,p) * PolicyState.if_(p)) / kf_scale * dt) 
+    policy_step = State.update(policy_step, "kf", (PolicyState.if_(p)  - chi * Definitions.a_f(s,p) * PolicyState.if_(p)) * dt / kf_scale) 
     policy_step = State.update(policy_step, "kc", (Definitions.ic(s,p) - chi * Definitions.a_c(s,p) * Definitions.ic(s,p)) * dt)
     policy_step = State.update(policy_step, "kd", (Definitions.id(s,p) - chi * Definitions.a_d_pos(s,p) * Definitions.id(s,p)) * dt ) 
-    policy_step = State.update(policy_step, "ks", (tf.nn.softplus((-Definitions.id(s,p)+vareps2)*vareps) / vareps -vareps2) / ks_scale * dt)
+    policy_step = State.update(policy_step, "ks", (tf.nn.softplus((-Definitions.id(s,p)+vareps2)*vareps) / vareps -vareps2) * dt / ks_scale) # alternatively 
     policy_step = State.update(policy_step, "T" , Definitions.P(s,p) * zeta * dt) # emissions are scaled because T=zeta S
     return policy_step 

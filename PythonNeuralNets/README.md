@@ -1,3 +1,19 @@
+The pdf file "CES_Model_estimation_with_deep_neural_nets_6" gives the overview of all the equations and the main parameter settings.
+
+To run the model, just type "bash Climate6.sh" in the command window.
+
+This shell file will run the model and output for different parameter settings: 
+relative risk aversion RRA=1.35 (standard utility). 
+relative risk aversion RRA=2 
+relative risk aversion RRA=3  
+higher precision (larger minibatch)
+No capital uncertainty
+No climate uncertainty
+No climate nor capital uncertainty
+
+Below it the readme file that explains how to use the Deep Equilibrium nets in general, written by Simon Scheidegger. 
+
+
 # Deep Equilibrium Nets for solving and estimating models
 
 Author: Simon Scheidegger, 04/23

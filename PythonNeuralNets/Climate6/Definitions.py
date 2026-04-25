@@ -43,7 +43,8 @@ P_BAU = Parameters.P_BAU
 psi1 = Parameters.psi1
 psi2 = Parameters.psi2
 psi3 = Parameters.psi3
-g_psi = Parameters.g_psi
+g_psi0 = Parameters.g_psi0
+gg_psi = Parameters.gg_psi
 
 #climate and damages
 zeta = Parameters.zeta
@@ -84,22 +85,24 @@ def v(s,p): #value function (PolicyState V is scaled to be close to 1)
 
 ###proper definitions
 
-#investment ratios (adj costs capped to avoid infty at zero capital. This should never be binding on optimal path.)
+#investment ratios (adj costs capped to avoid infty at zero capital. This should never be binding on an optimal path.)
 def a_f(s,p):
     return tf.minimum(PolicyState.if_(p) / kf(s,p), 0.45) # marginal effect of investment is 1-2 chi a_f=10% at boundary. chi a_f is 38% in first year. 
 def a_c(s,p):
     return tf.minimum(ic(s,p) / State.kc(s), 0.45)
 def a_d_pos(s,p):
-    return tf.minimum(tf.nn.relu(id(s,p)) / State.kd(s), 0.45)
+    kd_safe = tf.maximum(State.kd(s), 1e-6)
+    return tf.minimum(tf.nn.relu(id(s,p)) / kd_safe, 0.45)
 def a_d_neg(s,p):
-    return - tf.minimum(tf.nn.relu(-id(s,p)) / State.kd(s), 0.45)
+    kd_safe = tf.maximum(State.kd(s), 1e-6)
+    return - tf.minimum(tf.nn.relu(-id(s,p)) / kd_safe, 0.45)
 
 def t(s,p):
     return - tf.math.log(1.0-State.tau(s)) / g_tau
-#def t_tau(s,p):
-#    return 1.0 / g_tau / (1.0-State.tau(s))
+def AL(s,p):
+    return A0 * L0 * tf.math.exp((g + g_L)*t(s,p))
 def M(s,p):
-    M = (M0 + P_BAU* t(s,p) - S(s,p) + T0/zeta) / M0
+    M = (M0 + P_BAU* t(s,p) - S(s,p) + T0 / zeta) / M0
     M = 1 + tf.nn.relu(M-1) # t and S are not necessarily coherent, therefore values below 1 occur for low t and high S
     return M      
 
@@ -107,13 +110,11 @@ def epsilon(s,p):
     return 1.0 - ((1.0-omega) * M(s,p) **-varrho + omega * tf.math.exp(-g_epsilon * t(s,p))) / sigma0
 def epsilon_M(s,p): 
     return 1.0 / sigma0 * (1.0-omega) * varrho * M(s,p)**(-varrho-1.0) 
-#def epsilon_t(s,p):
-#    return ((1.0-omega) * varrho * M(s,p) ** (-varrho-1.0) * P_BAU / M0 + omega * tf.math.exp(-g_epsilon * t(s,p)) * g_epsilon)/sigma0
 
 def Ebase(s,p):
     return (varphi_c * State.kc(s)**epsilon(s,p) + varphi_d * (State.kd(s) + xi)**epsilon(s,p))
 def E(s,p):
-    return  Ebase(s,p) ** (1.0/epsilon(s,p))
+    return Ebase(s,p) ** (1.0/epsilon(s,p))
 def E_kc(s,p):
     return Ebase(s,p)**(1.0/epsilon(s,p)-1.0) * varphi_c * State.kc(s)**(epsilon(s,p)-1.0) 
 def E_kd(s,p):
@@ -123,8 +124,23 @@ def E_epsilon(s,p):
 
 def ybase(s,p):
     return (varphi_f * kf(s,p)** epsilon_f + varphi_E * E(s,p)** epsilon_f)
-def y(s,p=None):
-    return ybase(s,p) ** (alpha/epsilon_f) * tf.math.exp(-0.5 * gamma * State.T(s)**2) 
+#def y(s,p=None): #p=None allows the function to be used with only one argument, but it is not faster.
+#    return ybase(s,p) ** (alpha/epsilon_f) * tf.math.exp(-0.5 * gamma * State.T(s)**2) 
+def y(s, p):
+    base = ybase(s, p)
+    powered = base ** (alpha / epsilon_f)
+    def print_debug():
+        tf.print("ybase stats - min:", tf.reduce_min(base), "max:", tf.reduce_max(base), 
+                 "kf:", tf.reduce_min(State.kf(s)), "E:", tf.reduce_min(E(s,p)))
+        return tf.constant(0.0)
+    debug_val = tf.cond(
+        tf.reduce_any(tf.math.logical_not(tf.math.is_finite(powered))),
+        print_debug,
+        lambda: tf.constant(0.0)
+    )
+    powered_safe = tf.where(tf.math.is_finite(powered), powered, tf.ones_like(powered) * 1e-4)
+    return (powered_safe + debug_val * 0.01) * tf.math.exp(-0.5 * gamma * State.T(s)**2)
+
 def y_E(s,p):
     return alpha * y(s,p) * varphi_E * E(s,p)**(epsilon_f-1.0) / ybase(s,p) 
 def y_kf(s,p):
@@ -133,43 +149,44 @@ def y_kc(s,p):
     return y_E(s,p) * E_kc(s,p)
 def y_kd(s,p):
     return  y_E(s,p) * E_kd(s,p)
-def y_S(s,p):
-    return -y(s,p) * gamma * zeta**2 * S(s,p) 
+#def y_S(s,p): 
+#    return -y(s,p) * gamma * zeta**2 * S(s,p) 
+def y_T(s,p): 
+    return -y(s,p) * gamma * State.T(s) + y_epsilon(s,p) * epsilon_M(s,p) / (-M0) / zeta
 def y_epsilon(s,p):
     return y_E(s,p) * E_epsilon(s,p)
 
 def ks_ratio(s,p):
     return ks(s,p) / (State.kd(s) +  ks(s,p))
+def g_psi(s,p):
+    return g_psi0 + (g + g_L - g_psi0) * (1 - tf.math.exp(-gg_psi * t(s,p))) 
 def P(s,p):
-    return A0 * L0 * tf.math.exp((g + g_L - g_psi)*t(s,p)) * (psi1 * (State.kd(s) + ks(s,p))  / psi2 / Kd0 * (tf.math.exp(-psi2 * Kd0 * ks_ratio(s,p)) - tf.math.exp(-psi2 * Kd0)) + psi3  * State.kd(s))
+    return A0 * L0 * tf.math.exp((g + g_L - g_psi(s,p))*t(s,p)) * (psi1 / psi2  * (State.kd(s) + ks(s,p))  / Kd0 * (tf.math.exp(-psi2 * Kd0 * ks_ratio(s,p)) - tf.math.exp(-psi2 * Kd0)) + psi3  * State.kd(s))
 def P_ks(s,p):
     kd_ratio = State.kd(s) / (State.kd(s) +  ks(s,p))
-    return  A0 * L0 * tf.math.exp((g + g_L - g_psi)*t(s,p)) * (-psi1 / psi2 / Kd0 * (tf.math.exp(-psi2 * Kd0 * ks_ratio(s,p)) - tf.math.exp(-psi2 * Kd0)) + psi1 * kd_ratio * tf.math.exp(-psi2 * Kd0 * ks_ratio(s,p))) 
+    return - A0 * L0 * tf.math.exp((g + g_L - g_psi(s,p))*t(s,p)) * (-psi1 / psi2 / Kd0 * (tf.math.exp(-psi2 * Kd0 * ks_ratio(s,p)) - tf.math.exp(-psi2 * Kd0)) + psi1 * kd_ratio * tf.math.exp(-psi2 * Kd0 * ks_ratio(s,p))) 
 def P_kd(s,p):
-    return A0 * L0 * tf.math.exp((g + g_L - g_psi)*t(s,p)) * (psi1 / psi2 * tf.math.exp(-psi2 * Kd0 * ks_ratio(s,p)) * (1/Kd0 + psi2 * ks_ratio(s,p)) - psi1/psi2/Kd0 * tf.math.exp(-psi2 * Kd0) + psi3)
-#def P_tau(s,p):
-#    return P(s,p) * (g + g_L - g_psi ) * t_tau(s,p)
+    return A0 * L0 * tf.math.exp((g + g_L - g_psi(s,p))*t(s,p)) * (psi1 / psi2 * tf.math.exp(-psi2 * Kd0 * ks_ratio(s,p)) * (1/Kd0 + psi2 * ks_ratio(s,p)) - psi1/psi2/Kd0 * tf.math.exp(-psi2 * Kd0) + psi3)
 
 def c(s,p):
-    consumption = y(s,p) - PolicyState.if_(p) - ic(s,p) - tf.nn.softplus(vareps * id(s,p)) / vareps - chi_s * a_d_neg(s,p) * id(s,p) 
+    consumption = y(s,p) - PolicyState.if_(p) - ic(s,p) - tf.nn.softplus(vareps * id(s,p)) / vareps - chi_s * a_d_neg(s,p) * id(s,p)   
     consumption = 0.03 + tf.nn.softplus(10 * (consumption - 0.03)) / 10 #avoid negative consumption, while keeping gradient in negative domain and avoiding explosive marg utility 
     return consumption 
 def U_c(s,p): 
     return c(s,p) **(-eta)
-#def c_tau(s,p):
-#    return  y_epsilon(s,p) * epsilon_t(s,p) * t_tau(s,p)                         
 
 def lambdakf(s,p): 
     return U_c(s,p) / (1.0 - 2.0 * chi * a_f(s,p)) 
 def lambdakc(s,p):
     return U_c(s,p) / (1.0 - 2.0 * chi * a_c(s,p)) 
-def lambdakd(s,p) :
+def lambdakd(s,p) : 
     numerator = (U_c(s,p) * (tf.nn.sigmoid(vareps * id(s,p)) + 2.0 * chi_s * a_d_neg(s,p)) + 
                lambdaks(s,p) * tf.nn.sigmoid(((-id(s,p)+vareps2) * vareps)))  
     denominator = 1.0 - 2.0 * chi * a_d_pos(s,p) 
     return numerator / denominator
 
-
+def SCC(s,p) :
+    return -PolicyState.lambdaT(p) * zeta * AL(s,p) / U_c(s,p) * 1000
                
 
 

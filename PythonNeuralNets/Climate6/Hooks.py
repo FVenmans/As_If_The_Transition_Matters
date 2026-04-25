@@ -21,5 +21,5 @@ def cycle_hook(state,i):
 def post_init():
     Parameters.starting_state.assign(State.update(Parameters.starting_state, "y_kf", Definitions.y_kf(Parameters.starting_state,None)))
     Parameters.starting_state.assign(State.update(Parameters.starting_state, "y_kc", Definitions.y_kc(Parameters.starting_state,None)))
-    Parameters.starting_state.assign(State.update(Parameters.starting_state, "y_kd", Definitions.y_kd(Parameters.starting_state, None)))
-    Parameters.starting_state.assign(State.update(Parameters.starting_state, "y_S", Definitions.y_S(Parameters.starting_state,None)))
+    Parameters.starting_state.assign(State.update(Parameters.starting_state, "y_kd", Definitions.y_kd(Parameters.starting_state,None)))
+    Parameters.starting_state.assign(State.update(Parameters.starting_state, "y_T",  Definitions.y_T( Parameters.starting_state,None))) 
