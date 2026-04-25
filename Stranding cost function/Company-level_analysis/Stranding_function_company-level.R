@@ -1,22 +1,24 @@
-# This code uses company-level data on physical assets and emissions to fit an exponential intensity function 
+# This code uses company-level data on physical assets and emissions to fit a 'stranding cost function'
 # This is part of "Optimal climate policy transition as if the transition matters"
-# E. Campiglio, S. Dietz, F. Venmans
+# Authors: E. Campiglio, S. Dietz, F. Venmans
 
 #*************************
 # 0. Introduction and declarations ----
 #*************************
 #*
 # Install/load needed packages
-pkgs <- c("DEoptim", "dplyr", "ggplot2", "janitor", "Polychrome", "readxl", "rlang")
+pkgs <- c("cowplot", "DEoptim", "dplyr", "ggplot2", "Polychrome", "readxl", "writexl")
 install.packages(setdiff(pkgs, rownames(installed.packages())))
 invisible(lapply(pkgs, library, character.only = TRUE))
 # Clear previous environment
 rm(list = ls())
 # Load functions from external script
-source("Capital_emission_intensity_FUNCTIONS.R")
+source("Company-level_analysis/Stranding_company-level_FUNCTIONS.R")
 
 # Choose the winsorisation level
 winsor_level= 0.025
+# Choose the winsorisation level for SCCE charts (might be different from winsor_level for readability)
+winsor_level_SCCE= 0.025
 # Choose the minimum emission level (companies below emis_floor will be dropped)
 emis_floor = 1e03
 # Set depreciation rate \delta used in the model
@@ -82,7 +84,7 @@ df_list <- lapply(sectors, function(sec) {
   # Decide which scaling factor to use for this sector
   get_sector_data(
     sector_code  = sec,
-    base_path = "."
+    base_path = "Company-level_analysis"
   )%>%
     mutate(
       sector = sec
@@ -118,28 +120,89 @@ df_full <- process_sector_data(
 df_SCCE <- create_df_SCCE(
   df_full, 
   LT = LT, 
-  winsor_level = winsor_level)
+  winsor_level = winsor_level_SCCE)
 
 df_FLEI <- create_df_FLEI(
   df_full, 
   winsor_level = winsor_level)
 
+write_xlsx(
+  list("FLEI" = df_FLEI, "SCCE" = df_SCCE),
+  path = "Results/Results_company.xlsx"
+)
 
 #*************************
-# 2. SCCE/FLEI Plots ----
+# 2. FLEI/SCCE Plots ----
 #*************************
 
-# Create SCCE plot
-res_plot_SCCE <- plot_SCCE(df_SCCE, winsor_level = winsor_level)
-print(res_plot_SCCE$plot)
-# Chart without title if needed for paper
-# result_plot_SCCE$plot + labs(title = NULL)
+#--- Main stand-alone plots ---#
 
 # Create FLEI plot
 res_plot_FLEI <- plot_FLEI(df_FLEI, winsor_level = winsor_level)
-print(res_plot_FLEI$plot)
-# Chart without title if needed for paper
-# res_plot_FLEI$plot + labs(title = NULL)
+p_FLEI<-res_plot_FLEI$plot
+p_FLEI
+
+# Optional: Define SCCE threshold (y-axis). This will be used for the SCCE_zoom plots
+max_scce_threshold <- 200 # in USD
+
+# Create SCCE plot. Returns: $plot with all companies; $plot_zoom with companies below threshold
+res_plot_SCCE <- plot_SCCE(df_SCCE, 
+                           winsor_level = winsor_level_SCCE,
+                           max_scce_threshold = max_scce_threshold
+                           )
+p_SCCE<-res_plot_SCCE$plot
+p_SCCE_zoom <-res_plot_SCCE$plot_zoom
+p_SCCE
+p_SCCE_zoom
+
+#--- Simplified base plots ---#
+
+# Plots with shorter labels, no legend, shorter titles
+p_FLEI_simple <- p_FLEI +
+  labs(y = "FLEI (kgCO2e/USD)", title ="Forward-Looking Emission Intensity") +
+  theme(legend.position = "none")
+p_SCCE_simple <- p_SCCE +
+  labs(y = "SCCE (USD/tCO2e)", , title ="Stranding Cost per Cumulative Emission") +
+  theme(legend.position = "none")
+p_SCCE_zoom_simple <- p_SCCE_zoom +
+  labs(y = "SCCE (USD/tCO2e)", title = paste0("Stranding Cost per Cumulative Emission (only companies with SCCE \u2264 ", max_scce_threshold, "USD)")) +
+  theme(legend.position = "none")
+
+
+#--- Stacked FLEI/SCCE plot ---#
+
+main_panels <- plot_grid(
+  p_FLEI_simple,
+  p_SCCE_zoom_simple,
+  ncol = 1,
+  rel_heights = c(1, 1)
+)
+# Shared legend
+shared_legend <- get_legend(
+  p_FLEI +
+    theme(
+      legend.position = "bottom",
+      legend.box = "horizontal"
+    )
+)
+# Stacked chart 
+plot_stacked <- plot_grid(
+  main_panels,
+  shared_legend,
+  ncol = 1,
+  rel_heights = c(1, 0.12)
+)
+plot_stacked
+
+ggsave(
+  filename = "Results/FLEI-SCCE_stacked_plot.png",
+  plot = plot_stacked,
+  width = 25,
+  height = 15,
+  units = "cm",
+  dpi = 300,
+  bg = "white"
+)
 
 
 #*************************
@@ -215,8 +278,33 @@ res <- x_from_integral(fit=fit_FLEI, P0 = P0, x0 = 0)
 print(res$x)
 
 
+## 4.4 Empirical cumulative emissions up to asset threshold ----
 
+# Choose threshold value
+capital_threshold <- 4
 
+# Calculate information on cumulative emissions (GtCO2e) within capital_threshold
+res_info <- cum_emissions_empirical_info(capital_threshold)
 
+cat(sprintf(
+  "The first %.2f tn USD of assets account for %.3f GtCO2e, corresponding to %.1f%% of total annual emissions in df_full, and include %d companies.\n",
+  res$threshold_tn,
+  res$emissions_gt,
+  100 * res$emissions_share,
+  res$n_companies_included
+))
 
+# Identify the top 5 sectors and countries among companies included in the threshold
+# Shares are by capital value within the threshold 
 
+res_rank <- composition_rankings_within_threshold(capital_threshold)
+
+cat(sprintf(
+  "The first %.2f tn USD of assets account for %.3f GtCO2e, corresponding to %.1f%% of total annual emissions in df_full, and include %d companies.\n\n",
+  res_info$threshold_tn,
+  res_info$emissions_gt,
+  100 * res_info$emissions_share,
+  res_info$n_companies_included
+))
+
+print(res_rank$table, row.names = FALSE)
